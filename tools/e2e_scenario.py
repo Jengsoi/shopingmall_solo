@@ -115,6 +115,23 @@ r = u.call(action="order_create", order_items=[]);        check("빈 주문 거�
 other = C(5000); other.call(action="login", login_id="test", password="1234")
 r = other.call(action="order_detail", order_id=oid);      check("남의 주문 상세 조회 차단", not ok(r), r)
 
+# ---------- 주문 취소 & 재고 복구 ----------
+r = u.call(action="order_list");                          check("주문 목록 결제금액", ok(r) and r["data"][0]["total_price"]==15000*3+30000*2, r)
+r = u.call(action="order_create", order_items=[{"product_id": p2, "quantity": 1}]); oc = r["data"]["order_id"]
+stock = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["products"]}[p2]["stock"]
+check("취소용 주문 생성(재고 1→0)", ok(r) and stock == 0, (r, stock))
+r = C(5000).call(action="order_cancel", order_id=oc);    check("비로그인 주문 취소 거부", not ok(r), r)
+r = other.call(action="order_cancel", order_id=oc);      check("남의 주문 취소 거부", not ok(r), r)
+r = u.call(action="order_cancel", order_id=999999);      check("없는 주문 취소 거부", not ok(r), r)
+r = u.call(action="order_cancel", order_id=oc);          check("주문 취소", ok(r), r)
+prods = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["products"]}
+check("취소 후 재고 복구(0→1)", prods[p2]["stock"]==1 and prods[p2]["stock_status"]=="재고 부족", prods[p2])
+r = u.call(action="order_list");                          check("취소 상태 반영", ok(r) and {o["order_id"]: o["status"] for o in r["data"]}[oc]=="CANCELLED", r)
+r = u.call(action="order_cancel", order_id=oc);          check("이미 취소된 주문 재취소 거부", not ok(r), r)
+stock = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["products"]}[p2]["stock"]
+check("재취소 시도 후 재고 그대로(1)", stock == 1, stock)
+r = u.call(action="order_detail", order_id=oc);          check("취소된 주문 상세 조회", ok(r) and r["data"]["status"]=="CANCELLED" and len(r["data"]["items"])==1, r)
+
 # ---------- 동시성: 재고 3짜리를 8명이 1개씩 ----------
 r = padd(name="동시성"+suffix, inventory=3, price=1000); pc = r["product_id"]
 results = []
@@ -139,6 +156,12 @@ check("stock_decrease: 하나라도 부족하면 전체 롤백", not ok(r), r)
 stock = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["products"]}[p1new]["stock"]
 check("stock_decrease 롤백 확인(20 그대로)", stock == 20, stock)
 r = inv.call(type="stock_decrease", items=[{"product_id": p1new, "quantity": 5}]); check("stock_decrease 성공", ok(r), r)
+
+# 주문 후 상품이 수정된 경우: 취소는 되지만 비활성(이전 버전) 상품의 재고는 되돌리지 않는다
+r = u.call(action="order_cancel", order_id=oid)
+check("수정된 상품이 포함된 주문 취소", ok(r) and "복구되지 않았습니다" in r["message"] and "티셔츠"+suffix in r["message"], r)
+prods = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["products"]}
+check("판매 중 상품만 재고 복구(p2 1→3, 새 상품 15 그대로)", prods[p2]["stock"]==3 and prods[p1new]["stock"]==15, (prods[p2]["stock"], prods[p1new]["stock"]))
 r = inv.call(type="bogus");                               check("재고: 알 수 없는 type", not ok(r), r)
 
 # ---------- 게시판 ----------
@@ -173,8 +196,10 @@ top = msgs[1]["content"]; cats = msgs[2]["content"]
 check("대시보드: 메시지 3종", types == ["total_sales","product_top5","category_sales"], types)
 import pymysql
 db = pymysql.connect(host="127.0.0.1", user="root", password="1234", database="shopping"); cur = db.cursor()
-cur.execute("select sum(price*quantity) from order_item oi join orders o on o.order_id=oi.order_id where date(o.ordered_at)=curdate()"); expect = int(cur.fetchone()[0])
-check("대시보드: 총매출 = DB 합계", total == expect and total > 0, (total, expect))
+cur.execute("select sum(price*quantity) from order_item oi join orders o on o.order_id=oi.order_id where date(o.ordered_at)=curdate() and o.status<>'CANCELLED'"); expect = int(cur.fetchone()[0])
+check("대시보드: 총매출 = DB 합계(취소 주문 제외)", total == expect and total > 0, (total, expect))
+cur.execute("select count(*) from orders where date(ordered_at)=curdate() and status='CANCELLED'")
+check("대시보드: 오늘 취소 주문 존재(제외 검증용)", cur.fetchone()[0] >= 2)
 check("대시보드: TOP5 정렬/개수", len(top) <= 5 and [int(t["total_sales"]) for t in top] == sorted([int(t["total_sales"]) for t in top], reverse=True), top)
 check("대시보드: 카테고리 합 = 총매출", sum(int(c["total_sales"]) for c in cats) == total, (cats, total))
 r = d.many(1, type="data", start="", end=""); check("대시보드: 기간 누락 거부", r[0]["type"]=="error", r)

@@ -107,10 +107,36 @@ public sealed record CartItem(long CartId, long ProductId, string Name, long Pri
         o.Int("price") ?? 0, o.Int("quantity") ?? 0);
 }
 
-public sealed record OrderSummary(long OrderId, string Status, string OrderedAt)
+public static class OrderStatus
 {
+    public const string Paid = "PAID";
+    public const string Cancelled = "CANCELLED";
+
+    public static string Label(string status) => status switch
+    {
+        Paid => "결제완료",
+        Cancelled => "주문취소",
+        _ => status,
+    };
+}
+
+public sealed record OrderSummary(long OrderId, string Status, string OrderedAt, long TotalPrice)
+{
+    public string StatusText => OrderStatus.Label(Status);
+    public string TotalText => Fmt.Won(TotalPrice);
+    public bool CanCancel => Status == OrderStatus.Paid;
+
     public static OrderSummary Parse(JsonObject o) => new(
-        o.Int("order_id") ?? 0, o.Str("status") ?? "", o.Str("ordered_at") ?? "");
+        o.Int("order_id") ?? 0, o.Str("status") ?? "", o.Str("ordered_at") ?? "", o.Int("total_price") ?? 0);
+}
+
+public sealed record OrderLine(long ProductId, string ProductName, long Price, long Quantity)
+{
+    public long Subtotal => Price * Quantity;
+    public override string ToString() => $"{ProductName} | {Fmt.Won(Price)} x {Quantity}개 = {Fmt.Won(Subtotal)}";
+
+    public static OrderLine Parse(JsonObject o) => new(
+        o.Int("product_id") ?? 0, o.Str("product_name") ?? "", o.Int("price") ?? 0, o.Int("quantity") ?? 0);
 }
 
 // ---------------------------------------------------------------- 게시판

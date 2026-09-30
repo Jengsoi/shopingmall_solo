@@ -122,6 +122,16 @@ public sealed class ShopApi
         ApiResult<List<OrderSummary>>.From(await CallAsync("order_list"),
             r => ParseList(r, OrderSummary.Parse), "주문 조회 실패");
 
+    /// <summary>주문에 담긴 상품 목록.</summary>
+    public async Task<ApiResult<List<OrderLine>>> OrderDetailAsync(long orderId) =>
+        ApiResult<List<OrderLine>>.From(await CallAsync("order_detail", ("order_id", orderId)),
+            r => r.Obj("data")?.Arr("items")?.Objects().Select(OrderLine.Parse).ToList() ?? new List<OrderLine>(),
+            "주문 조회 실패");
+
+    /// <summary>주문을 취소하고 재고를 되돌린다. 성공 시 Message 에 안내 문구가 들어 있다.</summary>
+    public async Task<ApiResult> OrderCancelAsync(long orderId) =>
+        ApiResult.From(await CallAsync("order_cancel", ("order_id", orderId)), "주문 취소에 실패했습니다.");
+
     // ------------------------------------------------------------ 게시판
 
     public async Task<ApiResult<BoardPage>> BoardListAsync(long page, long size, string keyword) =>

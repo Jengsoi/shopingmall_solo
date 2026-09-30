@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS cart (
 CREATE TABLE IF NOT EXISTS orders (
     order_id   INT AUTO_INCREMENT PRIMARY KEY,
     member_id  INT         NOT NULL,
-    status     VARCHAR(20) NOT NULL DEFAULT 'PAID',
+    status     VARCHAR(20) NOT NULL DEFAULT 'PAID',   -- 'PAID'(결제완료) / 'CANCELLED'(주문취소)
     ordered_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (member_id) REFERENCES member (member_id)
 );
