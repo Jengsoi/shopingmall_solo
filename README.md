@@ -1,0 +1,1 @@
+# shopingmall_solo
