@@ -107,24 +107,46 @@ public sealed record CartItem(long CartId, long ProductId, string Name, long Pri
         o.Int("price") ?? 0, o.Int("quantity") ?? 0);
 }
 
+/// <summary>주문 상태: 결제완료 → 배송준비중 → 배송중 → 배송완료, 그리고 주문취소. (서버 OrderStatus 와 같은 값)</summary>
 public static class OrderStatus
 {
     public const string Paid = "PAID";
+    public const string Preparing = "PREPARING";
+    public const string Shipping = "SHIPPING";
+    public const string Delivered = "DELIVERED";
     public const string Cancelled = "CANCELLED";
+
+    public static readonly string[] All = { Paid, Preparing, Shipping, Delivered, Cancelled };
 
     public static string Label(string status) => status switch
     {
         Paid => "결제완료",
+        Preparing => "배송준비중",
+        Shipping => "배송중",
+        Delivered => "배송완료",
         Cancelled => "주문취소",
         _ => status,
     };
+
+    /// <summary>관리자가 진행할 수 있는 다음 단계. 없으면 null.</summary>
+    public static string? Next(string status) => status switch
+    {
+        Paid => Preparing,
+        Preparing => Shipping,
+        Shipping => Delivered,
+        _ => null,
+    };
+
+    /// <summary>고객은 결제완료 상태에서만, 관리자는 배송완료 전까지 취소할 수 있다.</summary>
+    public static bool CanCancel(string status, bool byAdmin) =>
+        status == Paid || (byAdmin && status is Preparing or Shipping);
 }
 
 public sealed record OrderSummary(long OrderId, string Status, string OrderedAt, long TotalPrice)
 {
     public string StatusText => OrderStatus.Label(Status);
     public string TotalText => Fmt.Won(TotalPrice);
-    public bool CanCancel => Status == OrderStatus.Paid;
+    public bool CanCancel => OrderStatus.CanCancel(Status, byAdmin: false);
 
     public static OrderSummary Parse(JsonObject o) => new(
         o.Int("order_id") ?? 0, o.Str("status") ?? "", o.Str("ordered_at") ?? "", o.Int("total_price") ?? 0);
@@ -204,6 +226,46 @@ public sealed record AdminProduct(
         o.Int("product_id") ?? 0, o.Int("category_id") ?? 0, o.Str("category_name") ?? "",
         o.Str("name") ?? "", o.Str("description") ?? "", o.Str("color") ?? "", o.Str("size") ?? "",
         o.Int("price") ?? 0, o.Int("stock") ?? 0, o.Bool("is_active") ?? false, o.Str("stock_status") ?? "");
+}
+
+/// <summary>관리자 주문 관리 목록의 한 행.</summary>
+public sealed record AdminOrder(long OrderId, string Status, string OrderedAt, string LoginId, string MemberName, long TotalPrice)
+{
+    public string StatusText => OrderStatus.Label(Status);
+    public string TotalText => Fmt.Won(TotalPrice);
+    public string MemberText => $"{MemberName} ({LoginId})";
+    public string? NextStatus => OrderStatus.Next(Status);
+    public bool CanCancel => OrderStatus.CanCancel(Status, byAdmin: true);
+
+    public static AdminOrder Parse(JsonObject o) => new(
+        o.Int("order_id") ?? 0, o.Str("status") ?? "", o.Str("ordered_at") ?? "",
+        o.Str("login_id") ?? "", o.Str("member_name") ?? "", o.Int("total_price") ?? 0);
+}
+
+/// <summary>재고 변경 이력 한 줄.</summary>
+public sealed record StockHistoryEntry(
+    long HistoryId, string CreatedAt, long ProductId, string ProductName, long ChangeQty,
+    long StockBefore, long StockAfter, string Reason, long? OrderId, string MemberLoginId)
+{
+    public string ReasonText => Reason switch
+    {
+        "ORDER" => "주문",
+        "ORDER_CANCEL" => "주문취소",
+        "PRODUCT_ADD" => "상품등록",
+        "PRODUCT_UPDATE" => "상품수정",
+        "STOCK_DECREASE" => "재고차감",
+        _ => Reason,
+    };
+
+    public string ChangeText => ChangeQty > 0 ? $"+{Fmt.Num(ChangeQty)}" : Fmt.Num(ChangeQty);
+    public string StockText => $"{Fmt.Num(StockBefore)} → {Fmt.Num(StockAfter)}";
+    public string OrderText => OrderId is long id ? id.ToString() : "-";
+    public string MemberText => Fmt.OrDash(MemberLoginId);
+
+    public static StockHistoryEntry Parse(JsonObject o) => new(
+        o.Int("history_id") ?? 0, o.Str("created_at") ?? "", o.Int("product_id") ?? 0, o.Str("product_name") ?? "",
+        o.Int("change_qty") ?? 0, o.Int("stock_before") ?? 0, o.Int("stock_after") ?? 0,
+        o.Str("reason") ?? "", o.Int("order_id"), o.Str("member_login_id") ?? "");
 }
 
 /// <summary>상품 추가/수정 입력값. 서버에는 재고를 "inventory" 라는 이름으로 보낸다.</summary>

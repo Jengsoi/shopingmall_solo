@@ -19,9 +19,6 @@ public static class CartHandlers
         map["order_cancel"] = OrderCancelAsync;
     }
 
-    public const string StatusPaid = "PAID";
-    public const string StatusCancelled = "CANCELLED";
-
     private static bool TryMember(JsonObject req, out long memberId)
     {
         memberId = req.Int("member_id") ?? 0;
@@ -138,7 +135,7 @@ public static class CartHandlers
 
         // 2) 주문 생성
         await db.ExecAsync("INSERT INTO orders (member_id, status) VALUES (@member_id, @status)",
-            ("member_id", memberId), ("status", StatusPaid));
+            ("member_id", memberId), ("status", OrderStatus.Paid));
         long orderId = db.LastInsertId;
 
         foreach (var (productId, quantity, cartId) in parsed)
@@ -156,14 +153,10 @@ public static class CartHandlers
             if (stock < quantity)
                 throw new BusinessException($"{name} 재고가 부족합니다. (남은 재고: {stock}개)");
 
-            // 재고 확인과 차감을 한 문장으로 처리해서 동시 주문에서도 재고가 음수가 되지 않게 한다.
-            // order_item INSERT 보다 먼저 해야 한다: INSERT 의 외래키 검사가 상품 행에 공유 잠금을 걸고 나서
-            // UPDATE 가 배타 잠금을 요청하면, 같은 상품을 동시에 주문하는 트랜잭션끼리 교착(deadlock)에 빠진다.
-            int updated = await db.ExecAsync(@"
-                UPDATE product SET stock = stock - @quantity
-                WHERE product_id = @product_id AND is_active = TRUE AND stock >= @quantity",
-                ("quantity", quantity), ("product_id", productId));
-            if (updated == 0)
+            // 재고 차감(+이력)은 order_item INSERT 보다 먼저 해야 한다: INSERT 의 외래키 검사가 상품 행에
+            // 공유 잠금을 걸고 나서 UPDATE 가 배타 잠금을 요청하면, 같은 상품을 동시에 주문하는 트랜잭션끼리
+            // 교착(deadlock)에 빠진다.
+            if (!await StockLedger.DecreaseAsync(db, productId, quantity, StockLedger.ReasonOrder, orderId, memberId))
                 throw new BusinessException($"{name} 재고가 부족합니다.");
 
             await db.ExecAsync(@"
@@ -199,8 +192,8 @@ public static class CartHandlers
     }
 
     /// <summary>
-    /// 결제완료(PAID) 주문을 취소하고, 주문했던 수량만큼 재고를 되돌린다. 본인 주문만 취소할 수 있다(관리자는 전체).
-    /// 상품이 주문 후 수정되어 비활성 상태가 된 경우에는 판매 중인 상품이 아니므로 재고를 되돌리지 않고 안내만 한다.
+    /// 주문을 취소하고 주문 수량만큼 재고를 되돌린다. 고객은 본인의 결제완료 주문만 취소할 수 있다.
+    /// (상태 규칙은 OrderWorkflow 참고)
     /// </summary>
     private static async Task<JsonObject> OrderCancelAsync(SqlSession db, JsonObject req, Session s)
     {
@@ -210,39 +203,7 @@ public static class CartHandlers
         if (orderId is null or 0)
             return Resp.Fail("order_id가 필요합니다.");
 
-        var order = await db.OneAsync(
-            "SELECT member_id, status FROM orders WHERE order_id = @order_id",
-            ("order_id", orderId));
-        if (order is null || (order.Int("member_id") != memberId && !s.IsAdmin))
-            return Resp.Fail("주문을 찾을 수 없습니다.");
-        if (order.Str("status") != StatusPaid)
-            return Resp.Fail("이미 취소되었거나 취소할 수 없는 주문입니다.");
-
-        // 상태 확인과 변경을 한 문장으로 처리해서, 같은 주문을 동시에 취소해도 재고가 두 번 복구되지 않게 한다.
-        int updated = await db.ExecAsync(
-            "UPDATE orders SET status = @cancelled WHERE order_id = @order_id AND status = @paid",
-            ("cancelled", StatusCancelled), ("order_id", orderId), ("paid", StatusPaid));
-        if (updated == 0)
-            return Resp.Fail("이미 취소되었거나 취소할 수 없는 주문입니다.");
-
-        var items = await db.RowsAsync(
-            "SELECT product_id, product_name, quantity FROM order_item WHERE order_id = @order_id",
-            ("order_id", orderId));
-
-        var notRestored = new List<string>();
-        foreach (var item in items)
-        {
-            int restored = await db.ExecAsync(@"
-                UPDATE product SET stock = stock + @quantity
-                WHERE product_id = @product_id AND is_active = TRUE",
-                ("quantity", item.Int("quantity")), ("product_id", item.Int("product_id")));
-            if (restored == 0)
-                notRestored.Add(item.Str("product_name") ?? "");
-        }
-
-        string message = "주문이 취소되었습니다.";
-        if (notRestored.Count > 0)
-            message += $"\n(판매가 종료되었거나 수정된 상품은 재고가 복구되지 않았습니다: {string.Join(", ", notRestored)})";
+        string message = await OrderWorkflow.CancelAsync(db, orderId.Value, memberId, s.IsAdmin);
         return Resp.Ok(new JsonObject { ["order_id"] = orderId }, message);
     }
 
@@ -262,13 +223,7 @@ public static class CartHandlers
         if (order is null || (order.Int("member_id") != memberId && !s.IsAdmin))
             return Resp.Fail("주문을 찾을 수 없습니다.");
 
-        var items = await db.RowsAsync(@"
-            SELECT order_item_id, product_id, product_name, price, quantity
-            FROM order_item
-            WHERE order_id = @order_id",
-            ("order_id", orderId));
-
-        order["items"] = Resp.Array(items);
+        order["items"] = await OrderWorkflow.ItemsAsync(db, orderId.Value);
         return Resp.Ok(order);
     }
 }

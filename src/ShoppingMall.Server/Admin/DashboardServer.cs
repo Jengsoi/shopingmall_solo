@@ -32,7 +32,7 @@ public sealed class DashboardServer : TcpServerBase
 
                 if (type == "login")
                 {
-                    var (ok, message) = await AdminAuth.VerifyAsync(
+                    var (ok, message, _) = await AdminAuth.VerifyAsync(
                         (request.Str("login_id") ?? "").Trim(), request.Str("password") ?? "");
                     authenticated = ok;
                     await channel.WriteAsync(new JsonObject

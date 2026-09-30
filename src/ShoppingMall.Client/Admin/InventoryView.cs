@@ -1,11 +1,12 @@
 namespace ShoppingMall.Client.Admin;
 
-/// <summary>재고관리 화면: 카테고리 관리 / 상품 관리 탭 (admin/view/inventory_view.py 의 InventoryWidget)</summary>
+/// <summary>재고관리 화면: 카테고리 관리 / 상품 관리 / 재고 이력 탭 (admin/view/inventory_view.py 의 InventoryWidget)</summary>
 public sealed class InventoryView : UserControl
 {
     private readonly InventoryApi _api;
     private readonly DataGrid _categoryTable;
     private readonly DataGrid _productTable;
+    private readonly StockHistoryView _history;
     private List<AdminCategory> _categories = new();
 
     public InventoryView(InventoryApi api)
@@ -31,11 +32,22 @@ public sealed class InventoryView : UserControl
             ("상태", nameof(AdminProduct.ActiveText), 0));
         _productTable.DoubleTapped += (_, _) => Ui.Fire(this, EditProductAsync);
 
+        _history = new StockHistoryView(api);
+
         var tabs = new TabControl();
         tabs.Items.Add(new TabItem { Header = "카테고리 관리", Content = BuildTab(
             _categoryTable, LoadCategoriesAsync, AddCategoryAsync, EditCategoryAsync) });
         tabs.Items.Add(new TabItem { Header = "상품 관리", Content = BuildTab(
             _productTable, LoadProductsAsync, AddProductAsync, EditProductAsync) });
+        tabs.Items.Add(new TabItem { Header = "재고 이력", Content = _history });
+
+        // 재고 이력 탭을 열 때마다 최신 이력을 불러온다. (탭 안의 표·ComboBox 에서 올라오는 이벤트는 무시)
+        tabs.SelectionChanged += (_, e) =>
+        {
+            if (!ReferenceEquals(e.Source, tabs)) return;
+            if (tabs.SelectedIndex == 2)
+                Ui.Fire(this, _history.LoadAsync);
+        };
 
         Content = new Border { Padding = new Thickness(12), Child = Ui.Dock(Ui.Title("재고관리"), tabs) };
     }

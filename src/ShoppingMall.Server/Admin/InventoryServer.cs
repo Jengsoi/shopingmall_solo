@@ -18,7 +18,7 @@ public sealed class InventoryServer : TcpServerBase
     protected override async Task HandleClientAsync(TcpClient client, CancellationToken ct)
     {
         using var channel = new MessageChannel(client.GetStream());
-        bool authenticated = false;
+        long? adminId = null; // 로그인한 관리자 (재고 이력·주문 처리자로 기록)
 
         try
         {
@@ -37,9 +37,9 @@ public sealed class InventoryServer : TcpServerBase
                 }
                 else if (type == "login")
                 {
-                    var (ok, message) = await AdminAuth.VerifyAsync(
+                    var (ok, message, memberId) = await AdminAuth.VerifyAsync(
                         (request.Str("login_id") ?? "").Trim(), request.Str("password") ?? "");
-                    authenticated = ok;
+                    adminId = ok ? memberId : null;
                     response = new JsonObject
                     {
                         ["type"] = "login",
@@ -49,13 +49,13 @@ public sealed class InventoryServer : TcpServerBase
                 }
                 else if (type == "logout")
                 {
-                    authenticated = false;
+                    adminId = null;
                     response = new JsonObject { ["type"] = "logout", ["success"] = true, ["message"] = "로그아웃되었습니다." };
                 }
                 else if (InventoryService.RequestTypes.Contains(type))
                 {
-                    response = authenticated
-                        ? await _inventory.HandleAsync(request)
+                    response = adminId is long id
+                        ? await _inventory.HandleAsync(request, id)
                         : new JsonObject { ["type"] = type, ["success"] = false, ["message"] = "로그인이 필요합니다." };
                 }
                 else

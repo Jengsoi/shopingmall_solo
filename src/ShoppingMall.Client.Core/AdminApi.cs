@@ -61,6 +61,48 @@ public sealed class InventoryApi
         request["product_id"] = productId;
         return ApiResult.From(await _net.RequestAsync(request), "상품 수정에 실패했습니다.");
     }
+
+    /// <summary>재고 변경 이력. productId 를 주면 그 상품의 모든 버전(수정 전/후) 이력만.</summary>
+    public async Task<ApiResult<List<StockHistoryEntry>>> StockHistoryAsync(long? productId)
+    {
+        var request = new JsonObject { ["type"] = "stock_history_list" };
+        if (productId is long id) request["product_id"] = id;
+        return ApiResult<List<StockHistoryEntry>>.From(await _net.RequestAsync(request),
+            r => r.Arr("history")?.Objects().Select(StockHistoryEntry.Parse).ToList() ?? new List<StockHistoryEntry>(),
+            "재고 이력 조회에 실패했습니다.");
+    }
+
+    // ------------------------------------------------------------ 주문 관리
+
+    /// <summary>전체 주문 목록. status 가 null 이면 모든 상태.</summary>
+    public async Task<ApiResult<List<AdminOrder>>> OrderListAsync(string? status)
+    {
+        var request = new JsonObject { ["type"] = "admin_order_list" };
+        if (status is not null) request["status"] = status;
+        return ApiResult<List<AdminOrder>>.From(await _net.RequestAsync(request),
+            r => r.Arr("orders")?.Objects().Select(AdminOrder.Parse).ToList() ?? new List<AdminOrder>(),
+            "주문 조회에 실패했습니다.");
+    }
+
+    public async Task<ApiResult<List<OrderLine>>> OrderDetailAsync(long orderId) =>
+        ApiResult<List<OrderLine>>.From(
+            await _net.RequestAsync(new JsonObject { ["type"] = "admin_order_detail", ["order_id"] = orderId }),
+            r => r.Arr("items")?.Objects().Select(OrderLine.Parse).ToList() ?? new List<OrderLine>(),
+            "주문 조회에 실패했습니다.");
+
+    /// <summary>주문을 다음 단계(nextStatus)로 진행한다.</summary>
+    public async Task<ApiResult> OrderAdvanceAsync(long orderId, string nextStatus) =>
+        ApiResult.From(await _net.RequestAsync(new JsonObject
+        {
+            ["type"] = "order_status_update",
+            ["order_id"] = orderId,
+            ["status"] = nextStatus,
+        }), "주문 상태 변경에 실패했습니다.");
+
+    public async Task<ApiResult> OrderCancelAsync(long orderId) =>
+        ApiResult.From(
+            await _net.RequestAsync(new JsonObject { ["type"] = "admin_order_cancel", ["order_id"] = orderId }),
+            "주문 취소에 실패했습니다.");
 }
 
 /// <summary>대시보드 서버(포트 6001) API.</summary>

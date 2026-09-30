@@ -132,6 +132,32 @@ stock = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["pr
 check("재취소 시도 후 재고 그대로(1)", stock == 1, stock)
 r = u.call(action="order_detail", order_id=oc);          check("취소된 주문 상세 조회", ok(r) and r["data"]["status"]=="CANCELLED" and len(r["data"]["items"])==1, r)
 
+# ---------- 주문 상태 관리 (관리자, 재고관리 6000) ----------
+def p2stock(): return {p["product_id"]: p for p in inv.call(type="inventory_product_list")["products"]}[p2]["stock"]
+aok = lambda r: r.get("success") is True
+r = C(6000).call(type="admin_order_list");                check("주문관리: 미인증 거부", not aok(r), r)
+r = u.call(action="order_create", order_items=[{"product_id": p2, "quantity": 1}]); os_ = r["data"]["order_id"]
+r = inv.call(type="admin_order_list", status="PAID")
+check("주문관리: 상태 필터 목록", aok(r) and any(o["order_id"]==os_ and o["login_id"]==newid and o["total_price"]==30000 for o in r["orders"]) and all(o["status"]=="PAID" for o in r["orders"]), r)
+r = inv.call(type="admin_order_list", status="BOGUS");    check("주문관리: 알 수 없는 상태 거부", not aok(r), r)
+r = inv.call(type="admin_order_detail", order_id=os_);    check("주문관리: 주문 상세", aok(r) and len(r["items"])==1 and r["items"][0]["product_id"]==p2, r)
+r = inv.call(type="order_status_update", order_id=os_, status="SHIPPING");  check("단계 건너뛰기 거부", not aok(r), r)
+r = inv.call(type="order_status_update", order_id=os_, status="PREPARING"); check("결제완료 → 배송준비중", aok(r), r)
+r = inv.call(type="order_status_update", order_id=os_, status="PREPARING"); check("같은 단계 중복 변경 거부", not aok(r), r)
+r = u.call(action="order_cancel", order_id=os_);         check("배송준비중: 고객 취소 거부", not ok(r) and "배송" in r["message"], r)
+r = inv.call(type="order_status_update", order_id=os_, status="SHIPPING");  check("배송준비중 → 배송중", aok(r), r)
+before = p2stock()
+r = inv.call(type="admin_order_cancel", order_id=os_);   check("배송중: 관리자 취소", aok(r), r)
+check("관리자 취소 재고 복구(+1)", p2stock() == before + 1, (before, p2stock()))
+r = inv.call(type="order_status_update", order_id=os_, status="DELIVERED"); check("취소된 주문 진행 거부", not aok(r), r)
+r = u.call(action="order_create", order_items=[{"product_id": p2, "quantity": 1}]); od = r["data"]["order_id"]
+steps = [inv.call(type="order_status_update", order_id=od, status=st) for st in ("PREPARING", "SHIPPING", "DELIVERED")]
+check("배송완료까지 진행", all(aok(x) for x in steps), steps)
+r = u.call(action="order_list");                          check("고객 화면 상태 반영", {o["order_id"]: o["status"] for o in r["data"]}[od]=="DELIVERED", r)
+before = p2stock()
+r = inv.call(type="admin_order_cancel", order_id=od);    check("배송완료: 관리자 취소 거부", not aok(r), r)
+check("배송완료 취소 거부 후 재고 그대로", p2stock() == before, (before, p2stock()))
+
 # ---------- 동시성: 재고 3짜리를 8명이 1개씩 ----------
 r = padd(name="동시성"+suffix, inventory=3, price=1000); pc = r["product_id"]
 results = []
@@ -157,11 +183,36 @@ stock = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["pr
 check("stock_decrease 롤백 확인(20 그대로)", stock == 20, stock)
 r = inv.call(type="stock_decrease", items=[{"product_id": p1new, "quantity": 5}]); check("stock_decrease 성공", ok(r), r)
 
-# 주문 후 상품이 수정된 경우: 취소는 되지만 비활성(이전 버전) 상품의 재고는 되돌리지 않는다
+# 주문 후 상품이 수정된 경우: 수정 전 상품의 재고는 지금 판매 중인 새 버전으로 되돌린다
+before2 = p2stock()
 r = u.call(action="order_cancel", order_id=oid)
-check("수정된 상품이 포함된 주문 취소", ok(r) and "복구되지 않았습니다" in r["message"] and "티셔츠"+suffix in r["message"], r)
+check("수정된 상품이 포함된 주문 취소", ok(r) and "복구되지" not in r["message"], r)
 prods = {p["product_id"]: p for p in inv.call(type="inventory_product_list")["products"]}
-check("판매 중 상품만 재고 복구(p2 1→3, 새 상품 15 그대로)", prods[p2]["stock"]==3 and prods[p1new]["stock"]==15, (prods[p2]["stock"], prods[p1new]["stock"]))
+check("새 버전으로 재고 복구(새 상품 15→18, p2 +2)", prods[p1new]["stock"]==18 and prods[p2]["stock"]==before2+2 and prods[p1]["stock"]==7, (prods[p1new]["stock"], prods[p2]["stock"], prods[p1]["stock"]))
+
+# ---------- 재고 변경 이력 ----------
+def history(pid): return inv.call(type="stock_history_list", product_id=pid)
+def chain_ok(h):
+    h = list(reversed(h))  # 오래된 순
+    return (len(h) > 0 and h[0]["stock_before"] == 0
+            and all(x["stock_before"] + x["change_qty"] == x["stock_after"] for x in h)
+            and all(a["stock_after"] == b["stock_before"] for a, b in zip(h, h[1:])))
+r = C(6000).call(type="stock_history_list");             check("재고이력: 미인증 거부", not aok(r), r)
+r = history(p1new); h1 = r["history"]
+check("재고이력: 수정 전/후 버전이 한 이력으로 이어짐",
+      aok(r) and [x["reason"] for x in reversed(h1)] == ["PRODUCT_ADD", "ORDER", "PRODUCT_UPDATE", "STOCK_DECREASE", "ORDER_CANCEL"]
+      and {x["product_id"] for x in h1} == {p1, p1new}, [(x["reason"], x["product_id"]) for x in h1])
+check("재고이력: 수량 흐름 일치(0→10→7→20→15→18)", chain_ok(h1) and h1[0]["stock_after"] == 18, [(x["stock_before"], x["change_qty"], x["stock_after"]) for x in reversed(h1)])
+check("재고이력: 이전 상품 ID 로 조회해도 같은 이력", history(p1)["history"] == h1)
+check("재고이력: 처리자·주문번호 기록",
+      h1[-1]["member_login_id"] == "admin" and [x for x in h1 if x["reason"] == "ORDER"][0]["member_login_id"] == newid
+      and [x for x in h1 if x["reason"] == "ORDER"][0]["order_id"] == oid and h1[0]["order_id"] == oid, h1)
+h2 = history(p2)["history"]
+check("재고이력: 주문·취소·관리자취소 흐름 일치(p2)", chain_ok(h2) and h2[0]["stock_after"] == p2stock()
+      and any(x["reason"] == "ORDER_CANCEL" and x["order_id"] == os_ and x["member_login_id"] == "admin" for x in h2), h2)
+hc = history(pc)["history"]
+check("재고이력: 동시 주문 3건 + 실패 주문은 기록 안 됨", chain_ok(hc) and [x["reason"] for x in hc].count("ORDER") == 3 and hc[0]["stock_after"] == 0, hc)
+r = inv.call(type="stock_history_list");                  check("재고이력: 전체 조회", aok(r) and len(r["history"]) > 0, r)
 r = inv.call(type="bogus");                               check("재고: 알 수 없는 type", not ok(r), r)
 
 # ---------- 게시판 ----------

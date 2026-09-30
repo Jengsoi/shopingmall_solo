@@ -40,8 +40,11 @@ CREATE TABLE IF NOT EXISTS product (
     price       INT          NOT NULL,
     stock       INT          NOT NULL DEFAULT 0,
     is_active   BOOLEAN      NOT NULL DEFAULT TRUE,   -- 수정 시 기존 행은 FALSE 로 남긴다 (이력 보존)
+    origin_product_id INT    NULL,                     -- 수정으로 생긴 행이면 최초 상품 ID (최초 상품은 NULL)
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (category_id) REFERENCES category (category_id)
+    FOREIGN KEY (category_id) REFERENCES category (category_id),
+    FOREIGN KEY (origin_product_id) REFERENCES product (product_id),
+    INDEX idx_product_origin (origin_product_id)
 );
 
 CREATE TABLE IF NOT EXISTS cart (
@@ -57,7 +60,8 @@ CREATE TABLE IF NOT EXISTS cart (
 CREATE TABLE IF NOT EXISTS orders (
     order_id   INT AUTO_INCREMENT PRIMARY KEY,
     member_id  INT         NOT NULL,
-    status     VARCHAR(20) NOT NULL DEFAULT 'PAID',   -- 'PAID'(결제완료) / 'CANCELLED'(주문취소)
+    status     VARCHAR(20) NOT NULL DEFAULT 'PAID',
+        -- PAID(결제완료) → PREPARING(배송준비중) → SHIPPING(배송중) → DELIVERED(배송완료), CANCELLED(주문취소)
     ordered_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (member_id) REFERENCES member (member_id)
 );
@@ -71,6 +75,24 @@ CREATE TABLE IF NOT EXISTS order_item (
     quantity      INT          NOT NULL,
     FOREIGN KEY (order_id)   REFERENCES orders (order_id),
     FOREIGN KEY (product_id) REFERENCES product (product_id)
+);
+
+-- 재고가 바뀔 때마다 한 줄씩 남긴다. origin_product_id 로 상품의 모든 버전 이력을 이어서 볼 수 있다.
+CREATE TABLE IF NOT EXISTS stock_history (
+    history_id        INT AUTO_INCREMENT PRIMARY KEY,
+    product_id        INT         NOT NULL,           -- 재고가 바뀐 상품(버전)
+    origin_product_id INT         NOT NULL,           -- 최초 상품 ID
+    change_qty        INT         NOT NULL,           -- 변동 수량 (+ 입고/복구, - 차감)
+    stock_before      INT         NOT NULL,
+    stock_after       INT         NOT NULL,
+    reason            VARCHAR(20) NOT NULL,           -- ORDER / ORDER_CANCEL / PRODUCT_ADD / PRODUCT_UPDATE / STOCK_DECREASE
+    order_id          INT         NULL,
+    member_id         INT         NULL,               -- 변경한 사람 (주문자 또는 관리자)
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES product (product_id),
+    FOREIGN KEY (order_id)   REFERENCES orders (order_id),
+    FOREIGN KEY (member_id)  REFERENCES member (member_id),
+    INDEX idx_stock_history_origin (origin_product_id, history_id)
 );
 
 CREATE TABLE IF NOT EXISTS board_post (
