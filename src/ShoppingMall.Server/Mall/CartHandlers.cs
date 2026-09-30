@@ -4,7 +4,11 @@ using ShoppingMall.Server.Data;
 
 namespace ShoppingMall.Server.Mall;
 
-/// <summary>장바구니 / 주문 (handlers/cart_handler.py)</summary>
+/// <summary>
+/// 장바구니 (목록·담기·수량 변경·삭제) / 주문 (생성·목록·상세·취소).
+/// 모든 기능이 로그인을 요구하고, 항상 "로그인한 본인" 의 데이터만 다룬다.
+/// (WHERE 절에 member_id = 세션 회원 조건을 붙여서 남의 장바구니 행은 건드릴 수 없게 한다)
+/// </summary>
 public static class CartHandlers
 {
     public static void Register(Dictionary<string, Handler> map)
@@ -19,12 +23,14 @@ public static class CartHandlers
         map["order_cancel"] = OrderCancelAsync;
     }
 
+    /// <summary>로그인 여부 확인. member_id 는 MallServer 가 세션 값으로 넣어 준 것이다.</summary>
     private static bool TryMember(JsonObject req, out long memberId)
     {
         memberId = req.Int("member_id") ?? 0;
         return memberId != 0;
     }
 
+    /// <summary>내 장바구니. 상품명·가격은 담을 때가 아니라 지금의 상품 정보를 보여준다(JOIN).</summary>
     private static async Task<JsonObject> CartListAsync(SqlSession db, JsonObject req, Session s)
     {
         if (!TryMember(req, out var memberId)) return Resp.Fail("로그인이 필요합니다.");
@@ -39,6 +45,7 @@ public static class CartHandlers
         return Resp.Ok(Resp.Array(rows));
     }
 
+    /// <summary>장바구니 담기. 이미 담긴 상품이면 수량을 더한다.</summary>
     private static async Task<JsonObject> CartAddAsync(SqlSession db, JsonObject req, Session s)
     {
         if (!TryMember(req, out var memberId)) return Resp.Fail("로그인이 필요합니다.");
@@ -47,7 +54,7 @@ public static class CartHandlers
         if (productId is null or 0)
             return Resp.Fail("product_id가 필요합니다.");
 
-        // 키가 없으면 1개. (Python: request.get("quantity", 1))
+        // quantity 키가 없으면 1개. 키는 있는데 정수가 아니면 0 으로 보고 아래에서 거부한다.
         long quantity = req["quantity"] is null ? 1 : (req.Int("quantity") ?? 0);
         if (quantity <= 0)
             return Resp.Fail("수량은 1개 이상이어야 합니다.");
@@ -58,11 +65,13 @@ public static class CartHandlers
         if (product is null)
             return Resp.Fail("존재하지 않는 상품입니다.");
 
+        // 담을 때는 안내 차원에서만 재고를 확인한다. 실제로 재고를 줄이는 것은 주문할 때다.
         long stock = product.Int("stock") ?? 0;
         if (stock < quantity)
             return Resp.Fail($"재고가 부족합니다. (남은 재고: {stock}개)");
 
-        // cart 에 UNIQUE(member_id, product_id) 가 걸려 있어서, 이미 담긴 상품이면 수량만 더한다.
+        // cart 에 UNIQUE(member_id, product_id) 가 걸려 있어서, 이미 담긴 상품이면 INSERT 대신
+        // ON DUPLICATE KEY UPDATE 부분이 실행되어 수량만 더해진다. (SELECT 후 분기하는 것보다 한 문장이라 안전)
         await db.ExecAsync(@"
             INSERT INTO cart (member_id, product_id, quantity)
             VALUES (@member_id, @product_id, @quantity)
@@ -72,6 +81,7 @@ public static class CartHandlers
         return Resp.Ok(message: "장바구니에 담았습니다.");
     }
 
+    /// <summary>장바구니 수량 변경 (1 이상)</summary>
     private static async Task<JsonObject> CartUpdateAsync(SqlSession db, JsonObject req, Session s)
     {
         if (!TryMember(req, out var memberId)) return Resp.Fail("로그인이 필요합니다.");
@@ -84,12 +94,14 @@ public static class CartHandlers
         if (quantity <= 0)
             return Resp.Fail("수량은 1개 이상이어야 합니다.");
 
+        // member_id 조건 덕분에 남의 cart_id 를 보내도 아무 행도 바뀌지 않는다.
         await db.ExecAsync(
             "UPDATE cart SET quantity = @quantity WHERE cart_id = @cart_id AND member_id = @member_id",
             ("quantity", quantity), ("cart_id", cartId), ("member_id", memberId));
         return Resp.Ok(message: "수량이 변경되었습니다.");
     }
 
+    /// <summary>장바구니에서 한 항목 삭제</summary>
     private static async Task<JsonObject> CartDeleteAsync(SqlSession db, JsonObject req, Session s)
     {
         if (!TryMember(req, out var memberId)) return Resp.Fail("로그인이 필요합니다.");
@@ -105,8 +117,10 @@ public static class CartHandlers
     }
 
     /// <summary>
+    /// 주문 생성.
     /// order_items: [{"cart_id": 3, "product_id": 7, "quantity": 2}, ...]
-    /// cart_id 가 있으면 주문 후 해당 장바구니 행도 삭제한다. 하나라도 실패하면 전체 롤백.
+    /// cart_id 가 있으면 주문 후 해당 장바구니 행도 삭제한다.
+    /// 전체가 한 트랜잭션이라 상품 하나라도 재고가 부족하면 BusinessException → 주문·재고 차감·장바구니 삭제가 모두 롤백된다.
     /// </summary>
     private static async Task<JsonObject> OrderCreateAsync(SqlSession db, JsonObject req, Session s)
     {
@@ -133,14 +147,15 @@ public static class CartHandlers
             parsed.Add((productId.Value, quantity.Value, item.Int("cart_id")));
         }
 
-        // 2) 주문 생성
+        // 2) 주문서(orders) 생성. 상태는 결제완료로 시작한다.
         await db.ExecAsync("INSERT INTO orders (member_id, status) VALUES (@member_id, @status)",
             ("member_id", memberId), ("status", OrderStatus.Paid));
         long orderId = db.LastInsertId;
 
+        // 3) 상품마다: 재고 확인 → 재고 차감(+이력) → 주문 상품(order_item) 저장 → 장바구니에서 제거
         foreach (var (productId, quantity, cartId) in parsed)
         {
-            // 최신 상품명/가격/재고를 서버에서 직접 조회 (클라이언트 값을 믿지 않음)
+            // 최신 상품명/가격/재고를 서버에서 직접 조회 (클라이언트가 보낸 가격 등은 믿지 않음)
             var product = await db.OneAsync(
                 "SELECT name, price, stock FROM product WHERE product_id = @product_id AND is_active = TRUE",
                 ("product_id", productId));
@@ -148,6 +163,7 @@ public static class CartHandlers
             if (product is null)
                 throw new BusinessException($"상품(product_id={productId})을 찾을 수 없습니다.");
 
+            // 남은 재고를 메시지에 보여 주기 위한 1차 확인. 동시 주문에 대한 진짜 보호는 아래 DecreaseAsync 가 한다.
             string name = product.Str("name") ?? "";
             long stock = product.Int("stock") ?? 0;
             if (stock < quantity)
@@ -159,6 +175,7 @@ public static class CartHandlers
             if (!await StockLedger.DecreaseAsync(db, productId, quantity, StockLedger.ReasonOrder, orderId, memberId))
                 throw new BusinessException($"{name} 재고가 부족합니다.");
 
+            // 주문 시점의 상품명·가격을 복사해 둔다. 나중에 상품 정보가 바뀌어도 주문 내역은 그대로 남는다.
             await db.ExecAsync(@"
                 INSERT INTO order_item (order_id, product_id, product_name, price, quantity)
                 VALUES (@order_id, @product_id, @product_name, @price, @quantity)",
@@ -175,6 +192,10 @@ public static class CartHandlers
         return Resp.Ok(new JsonObject { ["order_id"] = orderId });
     }
 
+    /// <summary>
+    /// 내 주문 목록 (최신순). 주문마다 결제금액(가격 × 수량의 합)을 함께 계산한다.
+    /// LEFT JOIN 이라 상품이 없는 주문도 목록에서 빠지지 않고, 이때 합계는 COALESCE 로 0 이 된다.
+    /// </summary>
     private static async Task<JsonObject> OrderListAsync(SqlSession db, JsonObject req, Session s)
     {
         if (!TryMember(req, out var memberId)) return Resp.Fail("로그인이 필요합니다.");
@@ -203,10 +224,12 @@ public static class CartHandlers
         if (orderId is null or 0)
             return Resp.Fail("order_id가 필요합니다.");
 
+        // 취소할 수 없는 상태면 OrderWorkflow 가 BusinessException 을 던지고, MallServer 가 실패 응답으로 바꾼다.
         string message = await OrderWorkflow.CancelAsync(db, orderId.Value, memberId, s.IsAdmin);
         return Resp.Ok(new JsonObject { ["order_id"] = orderId }, message);
     }
 
+    /// <summary>주문 상세 (주문 정보 + 주문 상품 목록 items)</summary>
     private static async Task<JsonObject> OrderDetailAsync(SqlSession db, JsonObject req, Session s)
     {
         if (!TryMember(req, out var memberId)) return Resp.Fail("로그인이 필요합니다.");
@@ -220,6 +243,7 @@ public static class CartHandlers
             ("order_id", orderId));
 
         // 남의 주문은 볼 수 없다. (관리자는 예외)
+        // 존재하지 않는 주문과 남의 주문을 같은 메시지로 답해서, 다른 사람의 주문번호가 있는지도 알 수 없게 한다.
         if (order is null || (order.Int("member_id") != memberId && !s.IsAdmin))
             return Resp.Fail("주문을 찾을 수 없습니다.");
 

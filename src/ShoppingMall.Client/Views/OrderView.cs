@@ -1,8 +1,9 @@
 namespace ShoppingMall.Client.Views;
 
 /// <summary>
-/// 주문/결제 확인 화면 (gui/order_view.py).
+/// 주문/결제 확인 화면. 장바구니에서 고른 상품, 결제 금액, 배송 정보(회원정보)를 보여준다.
 /// 실제 주문 생성(order_create) 호출은 여기 "결제하기" 버튼에서 일어난다.
+/// 결제가 끝나거나 뒤로가기를 누르면 이벤트로 ShopShell 에 알려 장바구니 탭으로 돌아간다.
 /// </summary>
 public sealed class OrderView : UserControl
 {
@@ -12,7 +13,7 @@ public sealed class OrderView : UserControl
     private readonly TextBlock _name = Ui.Text("");
     private readonly TextBlock _phone = Ui.Text("");
     private readonly TextBlock _address = Ui.Text("");
-    private List<CartItem> _items = new();
+    private List<CartItem> _items = new(); // 주문할 항목
 
     public event Action? OrderCompleted;
     public event Action? OrderCancelled;

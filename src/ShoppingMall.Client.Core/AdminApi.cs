@@ -4,7 +4,11 @@ using ShoppingMall.Protocol;
 
 namespace ShoppingMall.Client.Core;
 
-/// <summary>재고관리 서버(포트 6000) API.</summary>
+/// <summary>
+/// 재고관리 서버(포트 6000) API. 관리자 화면의 재고 관리·재고 이력·주문 관리 탭이 사용한다.
+/// 요청은 {"type": "...", ...} 형식이고, 응답의 목록은 "categories", "products" 같은 키에 담겨 온다.
+/// 관리자 로그인은 NetworkClient.ForAdmin 이 연결할 때 자동으로 처리한다.
+/// </summary>
 public sealed class InventoryApi
 {
     private readonly NetworkClient _net;
@@ -14,6 +18,7 @@ public sealed class InventoryApi
         _net = net;
     }
 
+    /// <summary>전체 카테고리 (비활성 포함)</summary>
     public async Task<ApiResult<List<AdminCategory>>> CategoryListAsync() =>
         ApiResult<List<AdminCategory>>.From(
             await _net.RequestAsync(new JsonObject { ["type"] = "category_list" }),
@@ -24,6 +29,7 @@ public sealed class InventoryApi
         ApiResult.From(await _net.RequestAsync(new JsonObject { ["type"] = "category_add", ["name"] = name }),
             "카테고리 추가에 실패했습니다.");
 
+    /// <summary>카테고리 이름·활성 여부 수정 (카테고리는 삭제하지 않고 비활성화한다)</summary>
     public async Task<ApiResult> CategoryUpdateAsync(long categoryId, string name, bool isActive) =>
         ApiResult.From(await _net.RequestAsync(new JsonObject
         {
@@ -33,12 +39,14 @@ public sealed class InventoryApi
             ["is_active"] = isActive,
         }), "카테고리 수정에 실패했습니다.");
 
+    /// <summary>전체 상품 (수정으로 비활성이 된 이전 버전 포함)</summary>
     public async Task<ApiResult<List<AdminProduct>>> ProductListAsync() =>
         ApiResult<List<AdminProduct>>.From(
             await _net.RequestAsync(new JsonObject { ["type"] = "inventory_product_list" }),
             r => r.Arr("products")?.Objects().Select(AdminProduct.Parse).ToList() ?? new List<AdminProduct>(),
             "상품 조회에 실패했습니다.");
 
+    /// <summary>상품 추가/수정 요청 JSON. 서버는 재고를 "inventory" 라는 이름으로 받는다.</summary>
     private static JsonObject ProductRequest(string type, ProductInput p) => new()
     {
         ["type"] = type,
@@ -105,7 +113,7 @@ public sealed class InventoryApi
             "주문 취소에 실패했습니다.");
 }
 
-/// <summary>대시보드 서버(포트 6001) API.</summary>
+/// <summary>대시보드 서버(포트 6001) API. 요청 하나에 응답 3개(총매출·TOP5·카테고리별)가 돌아온다.</summary>
 public sealed class DashboardApi
 {
     private readonly NetworkClient _net;
@@ -115,7 +123,10 @@ public sealed class DashboardApi
         _net = net;
     }
 
-    /// <summary>start/end 기간의 총 매출, 상품 TOP5, 카테고리별 매출을 조회한다.</summary>
+    /// <summary>
+    /// start/end 기간의 총 매출, 상품 TOP5, 카테고리별 매출을 조회한다.
+    /// 날짜만 고르면 되도록 시작일은 00:00:00, 종료일은 23:59:59 를 붙여 그날 전체를 포함시킨다.
+    /// </summary>
     public async Task<ApiResult<DashboardData>> QueryAsync(DateTime start, DateTime end)
     {
         var request = new JsonObject
@@ -125,6 +136,7 @@ public sealed class DashboardApi
             ["end"] = end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " 23:59:59",
         };
 
+        // 응답 3개를 한꺼번에 받는다. (오류면 error 응답 하나만 온다)
         List<JsonObject> responses = await _net.ExchangeAsync(request, 3);
 
         if (responses.Count == 1 && responses[0].Str("type") == "error")
@@ -140,6 +152,7 @@ public sealed class DashboardApi
         var top5 = new List<SalesEntry>();
         var categories = new List<SalesEntry>();
 
+        // 응답마다 type 을 보고 어느 통계인지 구분해 담는다.
         foreach (var response in responses)
         {
             JsonArray content = response.Arr("content") ?? new JsonArray();
@@ -160,7 +173,7 @@ public sealed class DashboardApi
         return new ApiResult<DashboardData> { Ok = true, Value = new DashboardData(total, top5, categories) };
     }
 
-    /// <summary>SUM 결과 문자열(예: "123000" 또는 null)을 금액으로 바꾼다.</summary>
+    /// <summary>SUM 결과 문자열(예: "123000" 또는 null)을 금액으로 바꾼다. 숫자가 아니면 0.</summary>
     private static long ParseAmount(string? text) =>
         decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? (long)d : 0;
 }

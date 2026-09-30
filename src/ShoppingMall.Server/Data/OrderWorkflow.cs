@@ -6,6 +6,12 @@ namespace ShoppingMall.Server.Data;
 /// <summary>
 /// 주문 상태: 결제완료 → 배송준비중 → 배송중 → 배송완료, 그리고 주문취소.
 /// 상태는 관리자가 한 단계씩만 앞으로 진행할 수 있다.
+///
+///   PAID ──→ PREPARING ──→ SHIPPING ──→ DELIVERED
+///    │           │             │
+///    └───────────┴─────────────┴──→ CANCELLED   (고객은 PAID 에서만, 관리자는 셋 다)
+///
+/// DB 의 orders.status 컬럼에 아래 영문 값이 저장되고, 클라이언트가 한글로 바꿔 보여준다.
 /// </summary>
 public static class OrderStatus
 {
@@ -41,6 +47,8 @@ public static class OrderWorkflow
     public static async Task<string> CancelAsync(SqlSession db, long orderId, long actorId, bool byAdmin)
     {
         // 주문 행을 잠가서 같은 주문을 동시에 취소/진행해도 재고가 두 번 복구되지 않게 한다.
+        // (FOR UPDATE: 이 트랜잭션이 끝날 때까지 다른 트랜잭션은 이 행을 잠그거나 바꾸려면 기다려야 한다.
+        //  두 번째 취소 요청은 첫 번째가 커밋된 뒤에 상태를 읽으므로 "이미 취소된 주문" 으로 거절된다)
         var order = await db.OneAsync(
             "SELECT member_id, status FROM orders WHERE order_id = @order_id FOR UPDATE",
             ("order_id", orderId));
@@ -55,6 +63,7 @@ public static class OrderWorkflow
                 ? "배송완료된 주문은 취소할 수 없습니다."
                 : "배송 준비가 시작된 주문은 취소할 수 없습니다. 고객센터에 문의하세요.");
 
+        // 상태를 먼저 바꾸고, 주문 상품마다 재고를 되돌린다. (전체가 한 트랜잭션이라 중간에 실패하면 모두 롤백)
         await db.ExecAsync("UPDATE orders SET status = @status WHERE order_id = @order_id",
             ("status", OrderStatus.Cancelled), ("order_id", orderId));
 

@@ -11,7 +11,7 @@ public sealed class OrderHistoryView : UserControl
     private readonly ListBox _lines = new() { Height = 150 };
     private readonly TextBlock _detailTitle = Ui.Text("주문 상품", 14, true);
     private readonly Button _cancel;
-    private List<OrderSummary> _orders = new();
+    private List<OrderSummary> _orders = new(); // 지금 표에 보이는 주문 목록
 
     /// <summary>주문을 취소해 재고가 바뀌었을 때 (상품 목록 갱신용)</summary>
     public event Action? OrderCancelled;
@@ -25,11 +25,13 @@ public sealed class OrderHistoryView : UserControl
             ("주문일시", nameof(OrderSummary.OrderedAt), 2),
             ("상태", nameof(OrderSummary.StatusText), 0),
             ("결제금액", nameof(OrderSummary.TotalText), 1));
+        // 주문을 고르면 아래쪽에 그 주문의 상품을 보여준다.
         _table.SelectionChanged += (_, _) => Ui.Fire(this, LoadSelectedAsync);
 
         _cancel = Ui.Btn("주문취소", CancelAsync);
-        _cancel.IsEnabled = false;
+        _cancel.IsEnabled = false; // 주문을 고르기 전에는 끈다
 
+        // 위쪽 한 줄: 왼쪽에 제목, 오른쪽 끝에 버튼들
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 0, 8) };
         var title = Ui.Title("[주문내역]");
         var buttons = Ui.HStack(8, Ui.Btn("새로고침", LoadAsync), _cancel);
@@ -60,6 +62,7 @@ public sealed class OrderHistoryView : UserControl
             return;
         }
 
+        // 새로 불러와도 보고 있던 주문의 선택이 풀리지 않도록 주문번호로 다시 찾아 선택한다.
         long? keep = Selected?.OrderId;
         _orders = result.Value;
         _table.ItemsSource = _orders;
@@ -67,6 +70,7 @@ public sealed class OrderHistoryView : UserControl
         await LoadSelectedAsync();
     }
 
+    /// <summary>선택한 주문의 상품을 불러오고, 취소 가능한 상태(결제완료)일 때만 취소 버튼을 켠다.</summary>
     private async Task LoadSelectedAsync()
     {
         var order = Selected;
@@ -86,6 +90,7 @@ public sealed class OrderHistoryView : UserControl
             await Dialogs.ErrorAsync(this, result.Message);
     }
 
+    /// <summary>확인을 받은 뒤 주문 취소. 서버가 재고를 되돌리고, 안내 문구를 돌려준다.</summary>
     private async Task CancelAsync()
     {
         var order = Selected;

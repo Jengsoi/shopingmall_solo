@@ -1,6 +1,9 @@
 namespace ShoppingMall.Client.Views;
 
-/// <summary>게시글 작성/수정 대화상자. post 가 주어지면 수정 모드 (gui/board_write_dialog.py)</summary>
+/// <summary>
+/// 게시글 작성/수정 대화상자. post 가 null 이면 새 글, 주어지면 그 글을 수정하는 모드.
+/// 저장에 성공하면 Close(true) 로 닫아 부른 쪽이 목록을 새로 고치게 한다.
+/// </summary>
 public sealed class BoardWriteWindow : Window
 {
     private readonly ShopApi _api;
@@ -19,6 +22,7 @@ public sealed class BoardWriteWindow : Window
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
+        // 수정 모드: 기존 제목·내용을 채워 둔다.
         if (post is not null)
         {
             _title.Text = post.Title;
@@ -37,6 +41,7 @@ public sealed class BoardWriteWindow : Window
         };
     }
 
+    /// <summary>새 글이면 작성, 기존 글이면 수정 요청을 보낸다.</summary>
     private async Task SaveAsync()
     {
         string title = (_title.Text ?? "").Trim();

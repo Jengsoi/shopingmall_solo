@@ -1,8 +1,9 @@
 namespace ShoppingMall.Client.Admin;
 
 /// <summary>
-/// 관리자 화면 (admin/admin_main.py). 탭: 매출 현황(대시보드) / 재고 관리 / 주문 관리.
+/// 관리자 화면. 탭: 매출 현황(대시보드) / 재고 관리 / 주문 관리.
 /// 재고관리(6000)·대시보드(6001) 서버에는 로그인한 관리자 계정으로 다시 인증하며 접속한다.
+/// 서버 연결 2개를 직접 들고 있으므로 IDisposable 로 만들어, 로그아웃할 때 연결을 닫는다.
 /// </summary>
 public sealed class AdminShell : UserControl, IDisposable
 {
@@ -13,10 +14,12 @@ public sealed class AdminShell : UserControl, IDisposable
 
     public AdminShell(Member member, string password)
     {
+        // 두 관리자 서버에 각각 연결. 연결할 때마다 이 계정으로 자동 로그인한다.
         _inventoryNet = NetworkClient.ForAdmin(AppSettings.Host, AppSettings.InventoryPort, member.LoginId, password);
         _dashboardNet = NetworkClient.ForAdmin(AppSettings.Host, AppSettings.DashboardPort, member.LoginId, password);
 
         var dashboard = new DashboardView(new DashboardApi(_dashboardNet));
+        // 재고 관리와 주문 관리는 같은 재고관리 서버(6000) 연결을 함께 쓴다.
         var inventoryApi = new InventoryApi(_inventoryNet);
         var inventory = new InventoryView(inventoryApi);
         var orders = new OrderManageView(inventoryApi);
@@ -37,6 +40,7 @@ public sealed class AdminShell : UserControl, IDisposable
                 Ui.Fire(this, orders.LoadAsync);
         };
 
+        // 맨 위 줄: 왼쪽에 "관리자 모드 (이름)", 오른쪽 끝에 로그아웃
         var logout = Ui.Btn("로그아웃", () => { LogoutRequested?.Invoke(); return Task.CompletedTask; });
         var topBar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(12, 8) };
         var label = Ui.Text($"관리자 모드 ({member.Name})", 14, true);

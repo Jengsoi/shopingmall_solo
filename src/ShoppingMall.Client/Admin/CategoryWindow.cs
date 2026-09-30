@@ -1,6 +1,9 @@
 namespace ShoppingMall.Client.Admin;
 
-/// <summary>카테고리 추가/수정 대화상자 (admin/view/inventory_view.py 의 CategoryDialog)</summary>
+/// <summary>
+/// 카테고리 추가/수정 대화상자. 확인을 누르면 Close(true) 로 닫히고,
+/// 부른 쪽(InventoryView)이 CategoryName·IsActive 를 읽어 서버에 요청한다.
+/// </summary>
 public sealed class CategoryWindow : Window
 {
     private readonly TextBox _name = Ui.Input();
@@ -28,6 +31,7 @@ public sealed class CategoryWindow : Window
             _active.IsEnabled = false; // 추가 시에는 항상 활성으로 생성된다.
         }
 
+        // 이름이 비어 있으면 창을 닫지 않고 안내만 한다.
         var ok = Ui.Btn("확인", () =>
         {
             if (CategoryName.Length == 0)

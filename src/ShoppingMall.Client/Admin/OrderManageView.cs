@@ -6,6 +6,7 @@ namespace ShoppingMall.Client.Admin;
 /// </summary>
 public sealed class OrderManageView : UserControl
 {
+    // 상태 필터 목록: "전체" + 상태별 한글 이름. 0번(전체)을 빼면 OrderStatus.All 과 순서가 같다.
     private static readonly string[] FilterLabels =
         new[] { "전체" }.Concat(OrderStatus.All.Select(OrderStatus.Label)).ToArray();
 
@@ -16,7 +17,7 @@ public sealed class OrderManageView : UserControl
     private readonly TextBlock _detailTitle = Ui.Text("주문 상품", 14, true);
     private readonly Button _advance;
     private readonly Button _cancel;
-    private bool _loading;
+    private bool _loading; // 코드로 표를 다시 채우는 중에는 선택 변경 이벤트를 무시
 
     public OrderManageView(InventoryApi api)
     {
@@ -63,8 +64,10 @@ public sealed class OrderManageView : UserControl
 
     private AdminOrder? Selected => _table.SelectedItem as AdminOrder;
 
+    /// <summary>필터에서 고른 상태 값 (전체면 null)</summary>
     private string? FilterStatus => _filter.SelectedIndex > 0 ? OrderStatus.All[_filter.SelectedIndex - 1] : null;
 
+    /// <summary>필터 조건으로 주문 목록을 불러온다. 보고 있던 주문은 다시 선택해 둔다.</summary>
     public async Task LoadAsync()
     {
         var result = await _api.OrderListAsync(FilterStatus);
@@ -82,6 +85,10 @@ public sealed class OrderManageView : UserControl
         await LoadSelectedAsync();
     }
 
+    /// <summary>
+    /// 선택한 주문의 상품을 보여주고, 버튼 상태를 맞춘다.
+    /// 다음 단계 버튼은 "→ 배송중" 처럼 바뀔 상태를 글자로 보여주고, 더 진행할 수 없으면 꺼진다.
+    /// </summary>
     private async Task LoadSelectedAsync()
     {
         var order = Selected;
@@ -104,8 +111,10 @@ public sealed class OrderManageView : UserControl
             await Dialogs.ErrorAsync(this, result.Message);
     }
 
+    /// <summary>확인을 받은 뒤 주문을 다음 단계로 진행한다. 실패해도 목록을 새로 고쳐 최신 상태를 보여준다.</summary>
     private async Task AdvanceAsync()
     {
+        // 속성 패턴: 선택한 주문이 있고 NextStatus 가 null 이 아니면 order, next 에 담는다.
         if (Selected is not { NextStatus: { } next } order)
             return;
 
@@ -119,6 +128,7 @@ public sealed class OrderManageView : UserControl
         await LoadAsync();
     }
 
+    /// <summary>확인을 받은 뒤 관리자 취소 (배송완료 전까지). 서버가 재고를 되돌린다.</summary>
     private async Task CancelAsync()
     {
         if (Selected is not { CanCancel: true } order)

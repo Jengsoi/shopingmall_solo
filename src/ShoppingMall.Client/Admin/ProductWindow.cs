@@ -1,6 +1,9 @@
 namespace ShoppingMall.Client.Admin;
 
-/// <summary>상품 추가/수정 대화상자 (admin/view/inventory_view.py 의 ProductDialog)</summary>
+/// <summary>
+/// 상품 추가/수정 대화상자. 확인을 누르면 Close(true) 로 닫히고, 부른 쪽이 Result 를 읽어 서버에 요청한다.
+/// 수정 모드에서는 기존 값(재고 포함)을 채워 두므로 바꾸지 않은 항목은 그대로 저장된다.
+/// </summary>
 public sealed class ProductWindow : Window
 {
     private readonly ComboBox _category = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -8,6 +11,7 @@ public sealed class ProductWindow : Window
     private readonly TextBox _description = Ui.MultiLine(70);
     private readonly TextBox _color = Ui.Input();
     private readonly TextBox _size = Ui.Input();
+    // 숫자 입력칸. 범위를 벗어난 값은 입력할 수 없고, 화살표로 가격은 1000원, 재고는 1개씩 바뀐다.
     private readonly NumericUpDown _price = new() { Minimum = 0, Maximum = 100_000_000, Increment = 1000, Value = 0, FormatString = "N0" };
     private readonly NumericUpDown _stock = new() { Minimum = 0, Maximum = 1_000_000, Increment = 1, Value = 0, FormatString = "N0" };
     private readonly List<AdminCategory> _categories;
@@ -25,10 +29,11 @@ public sealed class ProductWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         _category.ItemsSource = categories;
-        _category.SelectedIndex = 0;
+        _category.SelectedIndex = 0; // 기본은 첫 번째 카테고리
 
         if (product is not null)
         {
+            // 상품의 카테고리를 목록에서 찾아 선택 (비활성 카테고리라 목록에 없으면 첫 번째 그대로)
             int index = categories.FindIndex(c => c.CategoryId == product.CategoryId);
             if (index >= 0) _category.SelectedIndex = index;
 
@@ -67,6 +72,7 @@ public sealed class ProductWindow : Window
         (long)(_price.Value ?? 0),
         (long)(_stock.Value ?? 0));
 
+    /// <summary>필수 항목(카테고리, 상품명)을 확인하고 창을 닫는다.</summary>
     private async Task OkAsync()
     {
         if (_category.SelectedItem is null)

@@ -6,6 +6,7 @@ namespace ShoppingMall.Client.Admin;
 /// </summary>
 public sealed class StockHistoryView : UserControl
 {
+    /// <summary>상품 선택 상자 항목. ProductId 가 null 이면 "전체 상품".</summary>
     private sealed record ProductChoice(long? ProductId, string Label)
     {
         public override string ToString() => Label;
@@ -14,7 +15,7 @@ public sealed class StockHistoryView : UserControl
     private readonly InventoryApi _api;
     private readonly ComboBox _product = new() { MinWidth = 260 };
     private readonly DataGrid _table;
-    private bool _loading;
+    private bool _loading; // 코드로 선택 상자를 채우는 중에는 이력 조회를 하지 않는다
 
     public StockHistoryView(InventoryApi api)
     {
@@ -51,6 +52,7 @@ public sealed class StockHistoryView : UserControl
         var products = await _api.ProductListAsync();
         long? keep = (_product.SelectedItem as ProductChoice)?.ProductId;
 
+        // 판매 중인 상품만 고를 수 있게 한다. (어느 버전을 골라도 서버가 수정 전/후 이력을 모두 보여준다)
         var choices = new List<ProductChoice> { new(null, "전체 상품") };
         if (products.Ok)
         {
@@ -67,6 +69,7 @@ public sealed class StockHistoryView : UserControl
         await LoadHistoryAsync();
     }
 
+    /// <summary>선택한 상품(또는 전체)의 재고 이력을 불러온다.</summary>
     private async Task LoadHistoryAsync()
     {
         long? productId = (_product.SelectedItem as ProductChoice)?.ProductId;

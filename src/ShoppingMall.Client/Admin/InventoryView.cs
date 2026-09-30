@@ -1,13 +1,17 @@
 namespace ShoppingMall.Client.Admin;
 
-/// <summary>재고관리 화면: 카테고리 관리 / 상품 관리 / 재고 이력 탭 (admin/view/inventory_view.py 의 InventoryWidget)</summary>
+/// <summary>
+/// 재고관리 화면: 카테고리 관리 / 상품 관리 / 재고 이력 탭.
+/// 카테고리·상품 탭은 모양이 같아서(새로고침 · 표 · 추가/수정 버튼) BuildTab 으로 함께 만든다.
+/// 표에서 행을 더블클릭해도 수정 창이 열린다.
+/// </summary>
 public sealed class InventoryView : UserControl
 {
     private readonly InventoryApi _api;
     private readonly DataGrid _categoryTable;
     private readonly DataGrid _productTable;
     private readonly StockHistoryView _history;
-    private List<AdminCategory> _categories = new();
+    private List<AdminCategory> _categories = new(); // 상품 추가/수정 창의 카테고리 선택 목록으로도 쓴다
 
     public InventoryView(InventoryApi api)
     {
@@ -52,6 +56,7 @@ public sealed class InventoryView : UserControl
         Content = new Border { Padding = new Thickness(12), Child = Ui.Dock(Ui.Title("재고관리"), tabs) };
     }
 
+    /// <summary>위: [새로고침] ...... [추가][수정] 버튼 줄 / 아래: 표</summary>
     private static Control BuildTab(DataGrid table, Func<Task> refresh, Func<Task> add, Func<Task> edit)
     {
         var left = Ui.Btn("새로고침", refresh);
@@ -75,6 +80,7 @@ public sealed class InventoryView : UserControl
 
     // ------------------------------------------------------------ 카테고리
 
+    /// <summary>카테고리 목록 새로 불러오기</summary>
     private async Task LoadCategoriesAsync()
     {
         var result = await _api.CategoryListAsync();
@@ -88,6 +94,7 @@ public sealed class InventoryView : UserControl
         _categoryTable.ItemsSource = _categories;
     }
 
+    /// <summary>카테고리 추가 창 → 확인이면 서버에 추가 요청 → 목록 새로고침</summary>
     private async Task AddCategoryAsync()
     {
         if (TopLevel.GetTopLevel(this) is not Window owner) return;
@@ -107,6 +114,7 @@ public sealed class InventoryView : UserControl
         }
     }
 
+    /// <summary>선택한 카테고리 수정 창 → 확인이면 서버에 수정 요청 → 목록 새로고침</summary>
     private async Task EditCategoryAsync()
     {
         if (_categoryTable.SelectedItem is not AdminCategory selected)
@@ -133,6 +141,7 @@ public sealed class InventoryView : UserControl
 
     // ------------------------------------------------------------ 상품
 
+    /// <summary>상품 목록 새로 불러오기 (이전 버전 포함)</summary>
     private async Task LoadProductsAsync()
     {
         var result = await _api.ProductListAsync();
@@ -145,6 +154,7 @@ public sealed class InventoryView : UserControl
         _productTable.ItemsSource = result.Value;
     }
 
+    /// <summary>상품 추가. 활성 카테고리가 하나도 없으면 먼저 카테고리를 만들라고 안내한다.</summary>
     private async Task AddProductAsync()
     {
         var active = _categories.Where(c => c.IsActive).ToList();
@@ -170,6 +180,10 @@ public sealed class InventoryView : UserControl
         }
     }
 
+    /// <summary>
+    /// 상품 수정. 이미 수정되어 판매가 끝난 이전 버전은 고칠 수 없으므로 화면에서 먼저 막는다.
+    /// (서버도 같은 검사를 하지만, 창을 열기 전에 알려 주는 편이 친절하다)
+    /// </summary>
     private async Task EditProductAsync()
     {
         if (_productTable.SelectedItem is not AdminProduct selected)
@@ -191,7 +205,7 @@ public sealed class InventoryView : UserControl
         }
         if (TopLevel.GetTopLevel(this) is not Window owner) return;
 
-        var dialog = new ProductWindow(active, selected);
+        var dialog = new ProductWindow(active, selected); // 기존 값이 채워진 상태로 열린다
         if (!await dialog.ShowDialog<bool>(owner)) return;
 
         var result = await _api.ProductUpdateAsync(selected.ProductId, dialog.Result);

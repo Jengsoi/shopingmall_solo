@@ -5,9 +5,16 @@ using ShoppingMall.Protocol;
 namespace ShoppingMall.Server.Admin;
 
 /// <summary>
-/// 대시보드 서버 (dashboard_server.py, 기본 포트 6001).
-/// 먼저 {"type":"login",...} 로 관리자 인증 후, {"type":"data","start":"..","end":".."} 를 보내면
-/// total_sales / product_top5 / category_sales 메시지 3개가 차례로 돌아온다.
+/// 대시보드 서버 (기본 포트 6001). 관리자 화면의 매출 현황 탭이 접속한다.
+///
+/// 대화 순서
+///   1) 클라이언트 → {"type":"login","login_id":..,"password":..}   서버 → {"type":"login","success":..}
+///   2) 클라이언트 → {"type":"data","start":"2026-09-01 00:00:00","end":"2026-09-30 23:59:59"}
+///      서버 → 응답 3개를 차례로 보낸다.
+///        {"type":"total_sales",    "content":[{"total_sales":"108000"}]}
+///        {"type":"product_top5",   "content":[{"product_name":..,"total_sales":..}, ...]}
+///        {"type":"category_sales", "content":[{"name":..,"total_sales":..}, ...]}
+/// 오류가 나면 {"type":"error", "message": ...} 하나만 보낸다.
 /// </summary>
 public sealed class DashboardServer : TcpServerBase
 {
@@ -18,7 +25,7 @@ public sealed class DashboardServer : TcpServerBase
     protected override async Task HandleClientAsync(TcpClient client, CancellationToken ct)
     {
         using var channel = new MessageChannel(client.GetStream());
-        bool authenticated = false;
+        bool authenticated = false; // 이 연결이 관리자 로그인을 마쳤는지
 
         try
         {
@@ -64,6 +71,7 @@ public sealed class DashboardServer : TcpServerBase
                     continue;
                 }
 
+                // 통계 3종을 각각 조회해서 하나씩 보낸다. (클라이언트는 3개를 모두 받은 뒤 화면을 그린다)
                 await channel.WriteAsync(new JsonObject
                 {
                     ["type"] = "total_sales",

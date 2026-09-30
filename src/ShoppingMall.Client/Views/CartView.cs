@@ -1,16 +1,18 @@
 namespace ShoppingMall.Client.Views;
 
 /// <summary>
-/// 장바구니 (gui/cart_view.py)
+/// 장바구니. 목록에서 여러 항목을 골라 삭제하거나 구매할 수 있다.
 /// 구매 버튼은 바로 주문하지 않고 OrderRequested 로 선택 항목을 넘겨 주문/결제 확인 화면으로 이동한다.
 /// </summary>
 public sealed class CartView : UserControl
 {
     private readonly ShopApi _api;
+    // Multiple | Toggle: 클릭할 때마다 선택/해제가 바뀌어서 Ctrl 없이도 여러 개를 고를 수 있다.
     private readonly ListBox _list = new() { SelectionMode = SelectionMode.Multiple | SelectionMode.Toggle };
     private readonly TextBlock _total = Ui.Text("총합계: 0원", 16, true);
     private List<CartItem> _items = new();
 
+    /// <summary>구매 버튼: 주문할 항목 목록을 ShopShell 에 넘긴다.</summary>
     public event Action<List<CartItem>>? OrderRequested;
 
     public CartView(ShopApi api)
@@ -49,11 +51,13 @@ public sealed class CartView : UserControl
         _total.Text = "총합계: " + Fmt.Won(_items.Sum(i => i.Subtotal));
     }
 
+    /// <summary>목록에서 선택한 항목들</summary>
     private List<CartItem> Selected() => _list.SelectedItems?.OfType<CartItem>().ToList() ?? new List<CartItem>();
 
+    /// <summary>모든 항목 삭제 (서버에는 항목마다 삭제 요청)</summary>
     private async Task DeleteAllAsync()
     {
-        foreach (var item in _items.ToList())
+        foreach (var item in _items.ToList()) // 복사본으로 돌면서 삭제
             await _api.CartDeleteAsync(item.CartId);
         await LoadAsync();
     }

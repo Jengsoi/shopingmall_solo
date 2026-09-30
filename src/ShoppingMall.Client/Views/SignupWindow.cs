@@ -1,8 +1,12 @@
 namespace ShoppingMall.Client.Views;
 
-/// <summary>회원가입 대화상자 (gui/signup_view.py)</summary>
+/// <summary>
+/// 회원가입 대화상자. 아이디 중복확인을 통과해야 가입할 수 있다.
+/// 가입에 성공하면 Close(true) 로 창을 닫아 LoginView 에 결과를 알린다.
+/// </summary>
 public sealed class SignupWindow : Window
 {
+    // 화면에 보이는 성별 문구와 서버에 보내는 코드. 같은 순서(인덱스)끼리 짝이다.
     private static readonly string[] GenderLabels = { "선택 안 함", "남성", "여성" };
     private static readonly string[] GenderCodes = { "", "M", "F" };
 
@@ -15,7 +19,7 @@ public sealed class SignupWindow : Window
     private readonly TextBox _email = Ui.Input();
     private readonly TextBox _phone = Ui.Input();
     private readonly ComboBox _gender = new() { ItemsSource = GenderLabels, SelectedIndex = 0 };
-    private bool _idChecked;
+    private bool _idChecked; // 지금 입력된 아이디로 중복확인을 통과했는지
 
     public string LoginId => (_loginId.Text ?? "").Trim();
 
@@ -36,6 +40,7 @@ public sealed class SignupWindow : Window
                 _idChecked = false;
         };
 
+        // 아이디 입력칸(남은 폭 전부) + 중복확인 버튼(버튼 크기만큼)을 한 줄에
         var idRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         var check = Ui.Btn("중복확인", CheckIdAsync);
         Grid.SetColumn(_loginId, 0);
@@ -67,6 +72,7 @@ public sealed class SignupWindow : Window
         };
     }
 
+    /// <summary>아이디 중복확인. 사용 가능하면 _idChecked = true.</summary>
     private async Task CheckIdAsync()
     {
         if (LoginId.Length == 0)
@@ -89,6 +95,7 @@ public sealed class SignupWindow : Window
             await Dialogs.InfoAsync(this, "이미 사용 중인 아이디입니다.");
     }
 
+    /// <summary>필수 항목·중복확인·비밀번호 확인을 검사한 뒤 서버에 가입 요청</summary>
     private async Task SignupAsync()
     {
         string password = _password.Text ?? "";
@@ -110,7 +117,7 @@ public sealed class SignupWindow : Window
             return;
         }
 
-        int genderIndex = Math.Max(0, _gender.SelectedIndex);
+        int genderIndex = Math.Max(0, _gender.SelectedIndex); // 선택이 없으면(-1) "선택 안 함"
         var result = await _api.SignupAsync(
             LoginId, password, name,
             (_address.Text ?? "").Trim(), (_email.Text ?? "").Trim(), (_phone.Text ?? "").Trim(),

@@ -1,6 +1,9 @@
 namespace ShoppingMall.Client.Views;
 
-/// <summary>상품페이지 (gui/product_view.py)</summary>
+/// <summary>
+/// 상품페이지. 위: 카테고리·검색어로 거르기 / 가운데: 상품 표 / 아래: 선택한 상품 정보와 장바구니 담기.
+/// 표에서 상품을 고르면 서버에서 상세 정보를 다시 받아 최신 재고를 보여준다.
+/// </summary>
 public sealed class ProductView : UserControl
 {
     private readonly ShopApi _api;
@@ -11,7 +14,9 @@ public sealed class ProductView : UserControl
     private readonly NumericUpDown _quantity = new() { Minimum = 1, Maximum = 999, Value = 1, Increment = 1, FormatString = "0", Width = 120 };
     private readonly Button _addToCart;
     private readonly TextBlock _message = Ui.Text("");
-    private long? _selectedProductId;
+    private long? _selectedProductId; // 장바구니에 담을 상품 (상세를 불러온 상품)
+
+    // 코드에서 카테고리 목록을 채우는 동안에는 SelectionChanged 가 발생해도 상품을 다시 불러오지 않게 한다.
     private bool _loading;
 
     public ProductView(ShopApi api)
@@ -26,6 +31,7 @@ public sealed class ProductView : UserControl
             ("재고", nameof(ProductRow.StockText), 0.8));
         _table.SelectionChanged += (_, _) => Ui.Fire(this, ShowDetailAsync);
 
+        // 카테고리를 바꾸면 바로 다시 조회, 검색어 칸에서 Enter 를 눌러도 조회
         _category.SelectionChanged += (_, _) =>
         {
             if (!_loading) Ui.Fire(this, LoadProductsAsync);
@@ -36,7 +42,7 @@ public sealed class ProductView : UserControl
         };
 
         _addToCart = Ui.Btn("장바구니 담기", AddToCartAsync, 120);
-        _addToCart.IsEnabled = false;
+        _addToCart.IsEnabled = false; // 상품을 고르기 전에는 담을 수 없다
 
         var searchRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 8 };
         var label = Ui.Text("카테고리");
@@ -69,7 +75,7 @@ public sealed class ProductView : UserControl
         var result = await _api.CategoryListAsync();
 
         _loading = true;
-        var items = new List<CategoryInfo> { new(0, "전체") };
+        var items = new List<CategoryInfo> { new(0, "전체") }; // ID 0 = 전체 카테고리
         if (result.Ok) items.AddRange(result.Value);
         _category.ItemsSource = items;
         _category.SelectedIndex = 0;
@@ -81,6 +87,7 @@ public sealed class ProductView : UserControl
         await LoadProductsAsync();
     }
 
+    /// <summary>지금 고른 카테고리·검색어로 상품 목록을 다시 불러온다.</summary>
     public async Task LoadProductsAsync()
     {
         long? categoryId = (_category.SelectedItem as CategoryInfo)?.CategoryId;
@@ -99,6 +106,7 @@ public sealed class ProductView : UserControl
         _selectedProductId = null;
     }
 
+    /// <summary>표에서 고른 상품의 상세를 서버에서 받아 아래쪽에 보여준다. 품절이면 담기 버튼을 끈다.</summary>
     private async Task ShowDetailAsync()
     {
         if (_table.SelectedItem is not ProductRow row) return;
@@ -115,6 +123,7 @@ public sealed class ProductView : UserControl
         _addToCart.IsEnabled = result.Value.Stock > 0;
     }
 
+    /// <summary>고른 상품을 수량만큼 장바구니에 담는다. 결과는 아래쪽 문구로 알려 준다.</summary>
     private async Task AddToCartAsync()
     {
         if (_selectedProductId is not long productId)

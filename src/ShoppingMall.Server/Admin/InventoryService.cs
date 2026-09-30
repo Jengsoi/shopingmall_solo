@@ -5,7 +5,10 @@ using ShoppingMall.Server.Data;
 namespace ShoppingMall.Server.Admin;
 
 /// <summary>
-/// 재고 관리: 카테고리·상품 조회/추가/수정, 주문 시 재고 차감, 재고 변경 이력, 주문 관리 (admin/server/inventory_logic.py).
+/// 재고관리 서버(6000)의 실제 요청 처리: 카테고리·상품 조회/추가/수정, 재고 차감, 재고 변경 이력, 주문 관리.
+///
+/// 응답은 모두 {"type": 요청 타입, "success": true/false, "message": "..."} 형식이고,
+/// 목록 조회는 여기에 "categories", "products", "history", "orders" 같은 배열이 추가된다.
 ///
 /// 설계 원칙
 ///  - 삭제 기능 없음. 상품 수정은 기존 레코드를 비활성화하고 새 레코드를 만들어 이력을 보존한다.
@@ -18,6 +21,7 @@ public sealed class InventoryService
     /// <summary>이 수량 이하이면 "재고 부족"으로 표시한다. (0 이면 "품절")</summary>
     public const int LowStockThreshold = 5;
 
+    /// <summary>재고 수량을 화면에 보여줄 상태 문구로 바꾼다.</summary>
     public static string GetStockStatus(long stock)
     {
         if (stock == 0) return "품절";
@@ -25,6 +29,7 @@ public sealed class InventoryService
         return "판매 가능";
     }
 
+    /// <summary>이 서비스가 처리하는 요청 타입 목록. InventoryServer 가 인증 검사 대상인지 판단할 때 쓴다.</summary>
     public static readonly HashSet<string> RequestTypes = new()
     {
         "category_list", "category_add", "category_update",
@@ -33,6 +38,7 @@ public sealed class InventoryService
         "admin_order_list", "admin_order_detail", "order_status_update", "admin_order_cancel",
     };
 
+    /// <summary>재고관리 서버 공통 응답 {"type","success","message"} 를 만든다.</summary>
     private static JsonObject Msg(string type, bool success, string message) =>
         new() { ["type"] = type, ["success"] = success, ["message"] = message };
 
@@ -69,11 +75,13 @@ public sealed class InventoryService
     // 카테고리
     // ------------------------------------------------------------------
 
+    /// <summary>전체 카테고리 목록 (비활성 포함 — 관리자는 모두 봐야 하므로)</summary>
     private async Task<JsonObject> GetCategoryListAsync()
     {
         try
         {
             var rows = await Db.RunAsync(db => db.RowsAsync("SELECT * FROM category ORDER BY category_id"));
+            // DB 의 BOOLEAN(실제로는 0/1)을 JSON true/false 로 바꿔서 보낸다.
             foreach (var row in rows)
                 row["is_active"] = Json.IsTrue(row["is_active"]);
 
@@ -90,6 +98,7 @@ public sealed class InventoryService
         }
     }
 
+    /// <summary>카테고리 추가. 이름이 겹치면 거부한다.</summary>
     private async Task<JsonObject> AddCategoryAsync(JsonObject request)
     {
         const string type = "category_add";
@@ -119,6 +128,10 @@ public sealed class InventoryService
         }
     }
 
+    /// <summary>
+    /// 카테고리 이름·활성 여부 수정. 카테고리는 삭제하지 않고 비활성화만 한다.
+    /// (비활성 카테고리는 고객 화면에 안 보이고, 새 상품을 등록할 수도 없다)
+    /// </summary>
     private async Task<JsonObject> UpdateCategoryAsync(JsonObject request)
     {
         const string type = "category_update";
@@ -132,6 +145,7 @@ public sealed class InventoryService
         if (name.Length == 0)
             return Msg(type, false, "카테고리명을 입력하세요.");
 
+        // is_active 는 반드시 true/false 여야 한다. ("yes", 1 같은 값은 거부)
         if (request.Bool("is_active") is not bool isActive)
             return Msg(type, false, "활성 상태 값이 올바르지 않습니다.");
 
@@ -143,6 +157,7 @@ public sealed class InventoryService
                 if (found is null)
                     return Msg(type, false, "존재하지 않는 카테고리입니다.");
 
+                // 자기 자신을 뺀 나머지 중에 같은 이름이 있는지
                 var dup = await db.OneAsync(
                     "SELECT category_id FROM category WHERE name = @name AND category_id != @id",
                     ("name", name), ("id", categoryId));
@@ -169,6 +184,7 @@ public sealed class InventoryService
     // 상품
     // ------------------------------------------------------------------
 
+    /// <summary>전체 상품 목록 (이전 버전인 비활성 상품 포함). 카테고리 이름과 재고 상태 문구를 붙여서 보낸다.</summary>
     private async Task<JsonObject> GetProductListAsync()
     {
         const string type = "inventory_product_list";
@@ -186,12 +202,13 @@ public sealed class InventoryService
             foreach (var product in rows)
             {
                 product["is_active"] = Json.IsTrue(product["is_active"]);
+                // NULL 인 선택 항목은 빈 문자열로 보내서 화면에서 따로 처리하지 않아도 되게 한다.
                 product["description"] = product.Str("description") ?? "";
                 product["color"] = product.Str("color") ?? "";
                 product["size"] = product.Str("size") ?? "";
 
                 long stock = product.Int("stock") ?? 0;
-                // 요청 필드는 "inventory" 라서, 예전 Python 화면과도 맞도록 같은 값을 함께 내려준다.
+                // 상품 추가/수정 요청은 재고를 "inventory" 라는 이름으로 보내므로, 조회 응답에도 같은 이름의 값을 함께 넣어 준다.
                 product["inventory"] = stock;
                 product["stock_status"] = GetStockStatus(stock);
             }
@@ -209,7 +226,10 @@ public sealed class InventoryService
         }
     }
 
-    /// <summary>add/update 공통 입력 검증. 문제가 있으면 오류 메시지를 반환한다.</summary>
+    /// <summary>
+    /// 상품 추가/수정 공통 입력 검증. 문제가 있으면 오류 메시지를, 없으면 null 을 반환한다.
+    /// 검증을 통과한 값은 out 매개변수로 돌려준다. 가격·재고는 0 이상의 "정수" 만 허용한다. (true, 1.5 등 거부)
+    /// </summary>
     private static string? ValidateProductInput(JsonObject request, bool requireProductId,
         out long productId, out long categoryId, out string name, out long price, out long stock)
     {
@@ -236,12 +256,14 @@ public sealed class InventoryService
         return null;
     }
 
+    /// <summary>빈 문자열이면 DB 에 NULL 로 저장하기 위해 null 로 바꾼다. (색상·사이즈·설명 같은 선택 항목)</summary>
     private static object? NullIfEmpty(string? s)
     {
         s = s?.Trim();
         return string.IsNullOrEmpty(s) ? null : s;
     }
 
+    /// <summary>상품 등록. 처음 넣는 재고도 "상품등록" 이력으로 남긴다. (0 → 입력한 재고)</summary>
     private async Task<JsonObject> AddProductAsync(JsonObject request, long adminId)
     {
         const string type = "product_add";
@@ -258,6 +280,7 @@ public sealed class InventoryService
         {
             return await Db.RunAsync(async db =>
             {
+                // 비활성 카테고리에는 상품을 등록할 수 없다.
                 var category = await db.OneAsync(
                     "SELECT category_id FROM category WHERE category_id = @id AND is_active = TRUE",
                     ("id", categoryId));
@@ -285,7 +308,12 @@ public sealed class InventoryService
         }
     }
 
-    /// <summary>기존 상품을 비활성화하고, 수정된 내용으로 새 상품 레코드를 만든다.</summary>
+    /// <summary>
+    /// 상품 수정. 기존 행을 고치지 않고 "비활성화 + 새 행 생성" 으로 처리한다.
+    /// 이렇게 하면 수정 전 가격·이름으로 들어온 주문 기록이 그대로 보존된다.
+    /// 새 행에는 최초 상품 ID(origin_product_id)를 넣어 두 행이 같은 상품의 다른 버전임을 표시한다.
+    /// 응답의 new_product_id 가 앞으로 판매될 상품 ID 다.
+    /// </summary>
     private async Task<JsonObject> UpdateProductAsync(JsonObject request, long adminId)
     {
         const string type = "product_update";
@@ -302,7 +330,8 @@ public sealed class InventoryService
         {
             return await Db.RunAsync(async db =>
             {
-                // 수정 중 다른 작업이 끼어들지 못하도록 기존 상품 행을 잠근다.
+                // 수정 중 다른 작업(주문 등)이 끼어들지 못하도록 기존 상품 행을 잠근다. (FOR UPDATE)
+                // 지금 재고와 최초 상품 ID 도 함께 읽어 둔다. (최초 상품이면 origin 이 NULL 이라 자기 ID)
                 var product = await db.OneAsync(@"
                     SELECT stock, COALESCE(origin_product_id, product_id) AS origin_id
                     FROM product WHERE product_id = @id AND is_active = TRUE FOR UPDATE",
@@ -316,6 +345,7 @@ public sealed class InventoryService
                 if (category is null)
                     return Msg(type, false, "존재하지 않거나 비활성화된 카테고리입니다.");
 
+                // 기존 행 판매 중지. 1행이 아니면 그 사이 다른 관리자가 먼저 수정한 것이므로 전체 취소.
                 int deactivated = await db.ExecAsync(
                     "UPDATE product SET is_active = FALSE WHERE product_id = @id AND is_active = TRUE",
                     ("id", productId));
@@ -356,7 +386,10 @@ public sealed class InventoryService
     // 재고 차감
     // ------------------------------------------------------------------
 
-    /// <summary>items: [{"product_id": 1, "quantity": 2}, ...] 전체를 한 트랜잭션으로 차감한다.</summary>
+    /// <summary>
+    /// 관리자 재고 차감. items: [{"product_id": 1, "quantity": 2}, ...] 전체를 한 트랜잭션으로 차감한다.
+    /// 하나라도 실패하면 RequestRollback() 으로 앞에서 차감한 것까지 모두 되돌린다. (전부 성공 또는 전부 취소)
+    /// </summary>
     private async Task<JsonObject> DecreaseStockAsync(JsonObject request, long adminId)
     {
         const string type = "stock_decrease";
@@ -416,6 +449,8 @@ public sealed class InventoryService
 
     /// <summary>
     /// 최근 재고 변경 이력 (최대 500건). product_id 를 주면 그 상품의 모든 버전(수정 전/후) 이력만 본다.
+    /// 어느 버전의 ID 를 줘도 서브쿼리로 최초 상품 ID 를 구해서, 같은 최초 상품에 속한 이력을 모두 가져온다.
+    /// 처리자는 member 와 LEFT JOIN 해서 아이디로 보여준다. (처리자가 없는 이력도 빠지지 않도록 LEFT)
     /// </summary>
     private async Task<JsonObject> GetStockHistoryAsync(JsonObject request)
     {
@@ -455,11 +490,15 @@ public sealed class InventoryService
     // 주문 관리
     // ------------------------------------------------------------------
 
-    /// <summary>전체 주문 목록 (최신순 최대 500건). status 를 주면 그 상태만.</summary>
+    /// <summary>
+    /// 전체 주문 목록 (최신순 최대 500건). status 를 주면 그 상태만.
+    /// 주문자 이름·아이디와 결제금액(가격 × 수량의 합)을 함께 돌려준다.
+    /// </summary>
     private async Task<JsonObject> GetOrderListAsync(JsonObject request)
     {
         const string type = "admin_order_list";
         string? status = request.Str("status");
+        // 빈 값이면 전체, 값이 있으면 정해진 상태 이름 중 하나여야 한다.
         if (string.IsNullOrEmpty(status)) status = null;
         else if (!OrderStatus.All.Contains(status)) return Msg(type, false, "알 수 없는 주문 상태입니다.");
 
@@ -490,6 +529,7 @@ public sealed class InventoryService
         }
     }
 
+    /// <summary>주문에 담긴 상품 목록 (관리자는 모든 주문을 볼 수 있다)</summary>
     private async Task<JsonObject> GetOrderDetailAsync(JsonObject request)
     {
         const string type = "admin_order_detail";
@@ -510,7 +550,10 @@ public sealed class InventoryService
         }
     }
 
-    /// <summary>order_id 주문을 status(다음 단계)로 진행한다.</summary>
+    /// <summary>
+    /// order_id 주문을 status(다음 단계)로 진행한다.
+    /// 클라이언트가 "바꾸고 싶은 상태" 를 보내면, OrderWorkflow 가 현재 상태의 바로 다음 단계인지 확인한다.
+    /// </summary>
     private Task<JsonObject> UpdateOrderStatusAsync(JsonObject request)
     {
         const string type = "order_status_update";
@@ -525,6 +568,7 @@ public sealed class InventoryService
         });
     }
 
+    /// <summary>관리자 주문 취소 (배송완료 전까지). 재고 복구와 이력 기록은 OrderWorkflow 가 한다.</summary>
     private Task<JsonObject> CancelOrderAsync(JsonObject request, long adminId)
     {
         const string type = "admin_order_cancel";

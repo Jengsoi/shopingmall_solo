@@ -5,7 +5,7 @@ using ShoppingMall.Server.Data;
 
 namespace ShoppingMall.Server.Mall;
 
-/// <summary>상품 페이지 (handlers/product_handler.py)</summary>
+/// <summary>상품페이지: 카테고리 목록 / 상품 목록(검색) / 상품 상세. 고객에게는 판매 중(is_active)인 것만 보인다.</summary>
 public static class ProductHandlers
 {
     public static void Register(Dictionary<string, Handler> map)
@@ -15,6 +15,7 @@ public static class ProductHandlers
         map["product_detail"] = ProductDetailAsync;
     }
 
+    /// <summary>활성 카테고리 목록 (상품페이지의 카테고리 선택 상자)</summary>
     private static async Task<JsonObject> CategoryListAsync(SqlSession db, JsonObject req, Session s)
     {
         var rows = await db.RowsAsync(
@@ -22,6 +23,10 @@ public static class ProductHandlers
         return Resp.Ok(Resp.Array(rows));
     }
 
+    /// <summary>
+    /// 상품 목록. category_id(0 이나 없음 = 전체)와 keyword(상품명 일부)로 거를 수 있다.
+    /// 조건이 있을 때만 WHERE 절을 덧붙이는 방식으로 SQL 을 조립한다.
+    /// </summary>
     private static async Task<JsonObject> ProductListAsync(SqlSession db, JsonObject req, Session s)
     {
         var sql = new StringBuilder(@"
@@ -40,6 +45,7 @@ public static class ProductHandlers
         string keyword = req.Str("keyword") ?? "";
         if (keyword.Length > 0)
         {
+            // LIKE '%키워드%' = 상품명 어디에든 키워드가 들어 있으면. (% 는 SQL 쪽 와일드카드, 값은 여전히 파라미터로 전달)
             sql.Append(" AND p.name LIKE @keyword");
             args.Add(("keyword", $"%{keyword}%"));
         }
@@ -50,6 +56,7 @@ public static class ProductHandlers
         return Resp.Ok(Resp.Array(rows));
     }
 
+    /// <summary>상품 상세 (설명·카테고리명 포함). 판매가 끝난(비활성) 상품은 "찾을 수 없음".</summary>
     private static async Task<JsonObject> ProductDetailAsync(SqlSession db, JsonObject req, Session s)
     {
         long? productId = req.Int("product_id");

@@ -1,11 +1,14 @@
 namespace ShoppingMall.Client.Views;
 
 /// <summary>
-/// 일반 회원 화면 (main.py 의 MainWindow).
-/// 탭: 상품페이지 / 장바구니 / 주문내역 / 내 정보 / 게시판, 그리고 장바구니에서 넘어가는 주문·결제 화면.
+/// 일반 회원 화면. 탭 5개(상품페이지 / 장바구니 / 주문내역 / 내 정보 / 게시판)와,
+/// 장바구니에서 "구매" 를 누르면 탭 대신 잠시 보여주는 주문·결제 화면으로 이루어진다.
+/// 화면끼리 직접 부르지 않고 이벤트(OrderRequested, OrderCompleted 등)로 이 클래스에 알리면,
+/// 여기서 화면 전환과 새로고침을 맡는다.
 /// </summary>
 public sealed class ShopShell : UserControl
 {
+    // 탭 순서 (SelectedIndex 값)
     private const int ProductsTab = 0;
     private const int CartTab = 1;
     private const int OrdersTab = 2;
@@ -17,7 +20,7 @@ public sealed class ShopShell : UserControl
     private readonly MemberView _member;
     private readonly BoardView _board;
     private readonly TabControl _tabs = new();
-    private readonly ContentControl _root = new();
+    private readonly ContentControl _root = new(); // 탭 묶음 ↔ 주문·결제 화면을 바꿔 끼우는 자리
     private bool _productsStale; // 주문 취소로 재고가 바뀌어 상품 목록을 다시 불러와야 함
 
     public event Action? LogoutRequested;
@@ -58,6 +61,7 @@ public sealed class ShopShell : UserControl
                 Ui.Fire(this, _history.LoadAsync);
         };
 
+        // 장바구니 "구매" → 주문·결제 화면으로, 결제 완료나 뒤로가기 → 다시 장바구니 탭으로
         _cart.OrderRequested += items => Ui.Fire(this, () => ShowOrderAsync(items));
         _order.OrderCompleted += () => Ui.Fire(this, BackToCartAsync);
         _order.OrderCancelled += () => Ui.Fire(this, BackToCartAsync);
@@ -75,12 +79,14 @@ public sealed class ShopShell : UserControl
         await _board.LoadPostsAsync();
     }
 
+    /// <summary>선택한 장바구니 항목으로 주문·결제 화면을 채우고, 탭 대신 그 화면을 보여준다.</summary>
     private async Task ShowOrderAsync(List<CartItem> items)
     {
         await _order.SetItemsAsync(items);
         _root.Content = _order;
     }
 
+    /// <summary>주문·결제 화면을 닫고 장바구니 탭으로 돌아온다.</summary>
     private async Task BackToCartAsync()
     {
         await _cart.LoadAsync(); // 결제로 빠진 상품 반영
