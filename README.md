@@ -39,7 +39,7 @@ C# / .NET 8 로 만든 데스크톱 쇼핑몰입니다.
 | 영역 | 사용 기술 |
 |---|---|
 | 언어 / 런타임 | C# / .NET 8 |
-| GUI | WPF (XAML + 코드비하인드, Windows 전용) |
+| GUI | WPF |
 | 통신 | `TcpListener` / `TcpClient` + `async/await`, `System.Text.Json` |
 | DB | MySQL + MySqlConnector |
 
