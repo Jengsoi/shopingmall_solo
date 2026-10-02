@@ -1,0 +1,61 @@
+<!--
+  재고관리 화면: 카테고리 관리 / 상품 관리 / 재고 이력 탭.
+  카테고리·상품 탭은 같은 모양이다: 위 = [새로고침] ...... [추가][수정] / 아래 = 표 (행을 더블클릭해도 수정)
+-->
+<UserControl x:Class="ShoppingMall.Client.Admin.InventoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <DockPanel Margin="12">
+    <TextBlock DockPanel.Dock="Top" Text="재고관리" Style="{StaticResource Title}" Margin="0,0,0,8" />
+
+    <TabControl x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
+      <TabItem Header="카테고리 관리">
+        <DockPanel Margin="4,8,4,4">
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button Content="새로고침" Click="RefreshCategories_Click" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button Content="추가" Click="AddCategory_Click" />
+              <Button Content="수정" Margin="8,0,0,0" Click="EditCategory_Click" />
+            </StackPanel>
+          </DockPanel>
+          <DataGrid x:Name="CategoryTable" MouseDoubleClick="EditCategory_Click">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="카테고리ID" Binding="{Binding CategoryId}" Width="*" />
+              <DataGridTextColumn Header="카테고리명" Binding="{Binding Name}" Width="3*" />
+              <DataGridTextColumn Header="활성 여부" Binding="{Binding ActiveText}" Width="*" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <TabItem Header="상품 관리">
+        <DockPanel Margin="4,8,4,4">
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button Content="새로고침" Click="RefreshProducts_Click" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button Content="추가" Click="AddProduct_Click" />
+              <Button Content="수정" Margin="8,0,0,0" Click="EditProduct_Click" />
+            </StackPanel>
+          </DockPanel>
+          <!-- 짧은 값만 들어가는 열은 내용 폭(Auto)에 맞추고, 남는 폭(*)은 카테고리·상품명이 나눠 쓴다 -->
+          <DataGrid x:Name="ProductTable" MouseDoubleClick="EditProduct_Click">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="상품ID" Binding="{Binding ProductId}" Width="Auto" />
+              <DataGridTextColumn Header="카테고리" Binding="{Binding CategoryName}" Width="*" />
+              <DataGridTextColumn Header="상품명" Binding="{Binding Name}" Width="2*" />
+              <DataGridTextColumn Header="색상" Binding="{Binding Color}" Width="Auto" />
+              <DataGridTextColumn Header="사이즈" Binding="{Binding Size}" Width="Auto" />
+              <DataGridTextColumn Header="가격" Binding="{Binding PriceText}" Width="Auto" />
+              <DataGridTextColumn Header="재고" Binding="{Binding Stock}" Width="Auto" />
+              <DataGridTextColumn Header="재고 상태" Binding="{Binding StockStatus}" Width="Auto" />
+              <DataGridTextColumn Header="상태" Binding="{Binding ActiveText}" Width="Auto" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <!-- 재고 이력 화면(StockHistoryView)은 서버 API 가 필요해서 코드에서 넣는다 -->
+      <TabItem x:Name="HistoryTab" Header="재고 이력" />
+    </TabControl>
+  </DockPanel>
+</UserControl>

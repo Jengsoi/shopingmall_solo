@@ -1,0 +1,43 @@
+<!--
+  매출 현황. 위: 날짜 선택 + 조회 / 가운데 큰 글씨: 총 매출액 / 아래: 막대 차트와 도넛 차트를 반씩 나란히.
+  xmlns:local 은 이 프로젝트의 Admin 네임스페이스. 직접 만든 차트 컨트롤(local:BarChart)을 XAML 에서 쓰기 위해 선언한다.
+-->
+<UserControl x:Class="ShoppingMall.Client.Admin.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ShoppingMall.Client.Admin">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel.Resources>
+          <!-- 날짜 칸: 안쪽 입력칸 여백이 커서 날짜 끝자리가 잘리지 않도록 폭을 넉넉히, 여백은 줄인다 -->
+          <Style TargetType="DatePicker">
+            <Setter Property="Width" Value="180" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+          </Style>
+        </StackPanel.Resources>
+        <DatePicker x:Name="StartPicker" />
+        <TextBlock Text="~" VerticalAlignment="Center" Margin="8,0" />
+        <DatePicker x:Name="EndPicker" />
+        <Button Content="조회" Margin="8,0,0,0" Click="Query_Click" />
+      </StackPanel>
+
+      <Border BorderBrush="#DCDCDC" BorderThickness="2" Padding="15" Margin="0,8">
+        <TextBlock x:Name="TotalText" Text="총 매출액: 날짜를 조회하세요." FontSize="30" FontWeight="Bold"
+                   HorizontalAlignment="Center" />
+      </Border>
+    </StackPanel>
+
+    <!-- 차트 두 개를 1:1 폭으로 나란히 -->
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="12" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <local:BarChart x:Name="Bar" />
+      <local:DonutChart x:Name="Donut" Grid.Column="2" />
+    </Grid>
+  </DockPanel>
+</UserControl>

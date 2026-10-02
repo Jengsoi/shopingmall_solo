@@ -1,0 +1,24 @@
+<!-- 장바구니. 위: 제목 / 아래: 합계와 버튼 / 가운데: 장바구니 목록 -->
+<UserControl x:Class="ShoppingMall.Client.Views.CartView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <DockPanel Margin="12">
+    <TextBlock DockPanel.Dock="Top" Text="[장바구니]" Style="{StaticResource Title}" Margin="0,0,0,8" />
+
+    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+      <TextBlock x:Name="TotalText" Text="총합계: 0원" FontSize="16" FontWeight="Bold" />
+      <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+        <Button Content="전체삭제" Click="DeleteAll_Click" />
+        <Button Content="선택삭제" Click="DeleteSelected_Click" Margin="8,0,0,0" />
+        <Button Content="선택구매" Click="OrderSelected_Click" Margin="8,0,0,0" />
+        <Button Content="전체구매" Click="OrderAll_Click" Margin="8,0,0,0" />
+      </StackPanel>
+    </StackPanel>
+
+    <!--
+      SelectionMode="Multiple": 클릭할 때마다 선택/해제가 바뀌어서 Ctrl 없이도 여러 개를 고를 수 있다.
+      항목은 CartItem.ToString() 결과("상품명 | 가격 x 수량개")로 표시된다.
+    -->
+    <ListBox x:Name="ItemList" SelectionMode="Multiple" FontSize="14" Padding="4" />
+  </DockPanel>
+</UserControl>

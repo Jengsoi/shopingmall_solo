@@ -1,0 +1,42 @@
+<!--
+  상품페이지. DockPanel 배치: 위(Top) = 제목과 검색 줄 / 아래(Bottom) = 상품 정보와 담기 / 가운데(마지막 자식) = 상품 표.
+  DockPanel 은 마지막 자식이 남은 공간을 모두 채우므로, 창을 키우면 표만 커진다.
+-->
+<UserControl x:Class="ShoppingMall.Client.Views.ProductView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <TextBlock Text="[상품페이지]" Style="{StaticResource Title}" Margin="0,0,0,8" />
+      <!-- 검색 줄: [카테고리] [콤보] [검색어(남은 폭)] [검색] -->
+      <DockPanel>
+        <TextBlock Text="카테고리" Style="{StaticResource Label}" />
+        <ComboBox x:Name="CategoryBox" Width="160" DisplayMemberPath="Name" SelectionChanged="CategoryBox_SelectionChanged" />
+        <Button Content="검색" DockPanel.Dock="Right" Margin="8,0,0,0" Click="Search_Click" />
+        <TextBox x:Name="KeywordBox" Margin="8,0,0,0" KeyDown="KeywordBox_KeyDown" ToolTip="상품명 검색어 (Enter 로 검색)" />
+      </DockPanel>
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+      <TextBlock Text="상품 정보" FontWeight="Bold" />
+      <TextBlock x:Name="DetailText" Text="상품을 선택하면 상세 정보가 표시됩니다." TextWrapping="Wrap" Margin="0,6,0,0" />
+      <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+        <TextBlock Text="수량" Style="{StaticResource Label}" />
+        <TextBox x:Name="QuantityBox" Width="70" Text="1" HorizontalContentAlignment="Right" />
+        <Button x:Name="AddToCartButton" Content="장바구니 담기" Margin="8,0,0,0" IsEnabled="False" Click="AddToCart_Click" />
+      </StackPanel>
+      <TextBlock x:Name="MessageText" Margin="0,6,0,0" Foreground="#1565C0" />
+    </StackPanel>
+
+    <!-- 열 폭: "3*" 처럼 * 가 붙으면 남은 폭을 비율대로 나눠 갖는다 -->
+    <DataGrid x:Name="Table" SelectionChanged="Table_SelectionChanged">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="상품명" Binding="{Binding Name}" Width="3*" />
+        <DataGridTextColumn Header="색상" Binding="{Binding ColorText}" Width="*" />
+        <DataGridTextColumn Header="사이즈" Binding="{Binding SizeText}" Width="*" />
+        <DataGridTextColumn Header="가격" Binding="{Binding PriceText}" Width="1.2*" />
+        <DataGridTextColumn Header="재고" Binding="{Binding StockText}" Width="*" />
+      </DataGrid.Columns>
+    </DataGrid>
+  </DockPanel>
+</UserControl>

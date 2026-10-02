@@ -1,0 +1,12 @@
+<!--
+  최상위 창. 창 안에 ContentControl(Host) 하나만 두고,
+  로그인 화면 / 쇼핑 화면 / 관리자 화면 중 하나를 코드에서 바꿔 끼운다.
+-->
+<Window x:Class="ShoppingMall.Client.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        FontSize="14"
+        Title="쇼핑몰" Width="1000" Height="760" MinWidth="760" MinHeight="580"
+        WindowStartupLocation="CenterScreen">
+  <ContentControl x:Name="Host" />
+</Window>

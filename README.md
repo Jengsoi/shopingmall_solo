@@ -39,7 +39,7 @@ C# / .NET 8 로 만든 데스크톱 쇼핑몰입니다.
 | 영역 | 사용 기술 |
 |---|---|
 | 언어 / 런타임 | C# / .NET 8 |
-| GUI | Avalonia 11 (Windows / Linux / macOS) |
+| GUI | WPF (XAML + 코드비하인드, Windows 전용) |
 | 통신 | `TcpListener` / `TcpClient` + `async/await`, `System.Text.Json` |
 | DB | MySQL + MySqlConnector |
 
@@ -58,7 +58,9 @@ ShoppingMall.sln
 │  │   ├─ Admin/   재고관리 서버(6000), 대시보드 서버(6001)
 │  │   └─ Data/    DB 접속, 트랜잭션 도우미, 비밀번호 해시, 주문 상태 규칙(OrderWorkflow), 재고 변경·이력(StockLedger)
 │  ├─ ShoppingMall.Client.Core   통신·모델 계층 (NetworkClient, ShopApi, InventoryApi, DashboardApi)
-│  └─ ShoppingMall.Client        Avalonia 화면 (쇼핑 화면 / 관리자 화면)
+│  └─ ShoppingMall.Client        WPF 화면. 화면마다 .xaml(배치) + .xaml.cs(동작) 한 쌍
+│      ├─ Views/   쇼핑 화면 (로그인·상품·장바구니·주문·주문내역·내 정보·게시판)
+│      └─ Admin/   관리자 화면 (매출 대시보드·차트, 재고 관리·재고 이력, 주문 관리)
 ├─ tools/e2e_scenario.py    서버 통합 시나리오 테스트
 ├─ run-server.sh / run-client.sh
 ```
@@ -71,7 +73,7 @@ ShoppingMall.sln
 
 ## 실행 방법
 
-1. **.NET 8 SDK** 와 **MySQL** 설치
+1. **.NET 8 SDK** 와 **MySQL** 설치 (클라이언트가 WPF 라서 **Windows** 에서 실행합니다. Visual Studio 2022 로 `ShoppingMall.sln` 을 열어도 됩니다)
 2. 스키마와 테스트 계정 넣기
    ```bash
    mysql -u root -p < sql/schema.sql
@@ -91,8 +93,6 @@ ShoppingMall.sln
    dotnet run --project src/ShoppingMall.Client
    ```
    `test / 1234` 로 로그인하면 쇼핑 화면, `admin / admin1234` 로 로그인하면 관리자 화면이 열립니다.
-
-> 리눅스에서는 한글 폰트(예: `fonts-noto-cjk`)가 설치되어 있어야 글자가 보입니다.
 
 ### 설정 (환경변수)
 

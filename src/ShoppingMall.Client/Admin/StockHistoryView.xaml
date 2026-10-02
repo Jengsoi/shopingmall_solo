@@ -1,0 +1,26 @@
+<!-- 재고 변경 이력. 위: 상품 선택 + 새로고침 / 아래: 이력 표 (최신순) -->
+<UserControl x:Class="ShoppingMall.Client.Admin.StockHistoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <DockPanel Margin="4,8,4,4">
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+      <TextBlock Text="상품" Style="{StaticResource Label}" />
+      <ComboBox x:Name="ProductBox" Width="300" DisplayMemberPath="Label" SelectionChanged="ProductBox_SelectionChanged" />
+      <Button Content="새로고침" Margin="8,0,0,0" Click="Refresh_Click" />
+    </StackPanel>
+
+    <!-- 짧은 값은 내용 폭(Auto), 상품명만 남는 폭(*)을 쓴다 -->
+    <DataGrid x:Name="Table" SelectionChanged="Table_SelectionChanged">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="일시" Binding="{Binding CreatedAt}" Width="Auto" />
+        <DataGridTextColumn Header="상품ID" Binding="{Binding ProductId}" Width="Auto" />
+        <DataGridTextColumn Header="상품명" Binding="{Binding ProductName}" Width="*" />
+        <DataGridTextColumn Header="사유" Binding="{Binding ReasonText}" Width="Auto" />
+        <DataGridTextColumn Header="변동" Binding="{Binding ChangeText}" Width="Auto" />
+        <DataGridTextColumn Header="재고" Binding="{Binding StockText}" Width="Auto" />
+        <DataGridTextColumn Header="주문번호" Binding="{Binding OrderText}" Width="Auto" />
+        <DataGridTextColumn Header="처리자" Binding="{Binding MemberText}" Width="Auto" />
+      </DataGrid.Columns>
+    </DataGrid>
+  </DockPanel>
+</UserControl>

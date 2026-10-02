@@ -1,0 +1,30 @@
+<!-- 로그인 화면. 폭 360 짜리 묶음을 창 한가운데에 놓는다. -->
+<UserControl x:Class="ShoppingMall.Client.Views.LoginView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel Width="360" HorizontalAlignment="Center" VerticalAlignment="Center">
+    <TextBlock Text="[로그인]" FontSize="22" FontWeight="Bold" Margin="0,0,0,16" />
+
+    <!-- 2열 표: 왼쪽 라벨(Auto = 글자 폭만큼), 오른쪽 입력칸(* = 남은 폭 전부) -->
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+      <TextBlock Text="아이디" Style="{StaticResource Label}" />
+      <TextBox x:Name="IdBox" Grid.Column="1" />
+      <TextBlock Text="비밀번호" Grid.Row="1" Style="{StaticResource Label}" Margin="0,8,12,0" />
+      <!-- PasswordBox: 입력한 글자를 ● 로 가린다. KeyDown 에서 Enter 를 누르면 로그인 -->
+      <PasswordBox x:Name="PwBox" Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" KeyDown="PwBox_KeyDown" />
+    </Grid>
+
+    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+      <Button Content="로그인" Click="Login_Click" />
+      <Button Content="회원가입" Click="Signup_Click" Margin="8,0,0,0" />
+    </StackPanel>
+  </StackPanel>
+</UserControl>

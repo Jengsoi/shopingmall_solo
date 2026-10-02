@@ -1,0 +1,19 @@
+<!-- 카테고리 추가/수정 대화상자 -->
+<Window x:Class="ShoppingMall.Client.Admin.CategoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        FontSize="14"
+        Width="360" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <StackPanel Margin="20">
+    <DockPanel>
+      <TextBlock Text="카테고리명" Style="{StaticResource Label}" />
+      <TextBox x:Name="NameBox" />
+    </DockPanel>
+    <CheckBox x:Name="ActiveBox" Content="활성" IsChecked="True" Margin="0,10,0,0" />
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button Content="확인" IsDefault="True" Click="Ok_Click" />
+      <Button Content="취소" IsCancel="True" Margin="8,0,0,0" />
+    </StackPanel>
+  </StackPanel>
+</Window>
